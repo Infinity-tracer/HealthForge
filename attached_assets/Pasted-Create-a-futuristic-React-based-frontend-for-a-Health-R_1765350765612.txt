@@ -1,0 +1,77 @@
+Create a futuristic React-based frontend for a Health Records Management System (HRMS) with the following:
+
+🚀 OVERVIEW:
+- Two login roles: Doctor and Patient
+- After login, each user sees their own role-based dashboard
+- Biometric login placeholder (fingerprint scan + PIN) for Patient login
+- Styled using TailwindCSS and shadcn/ui (glassmorphism, neumorphism, modern transitions)
+
+🔐 LOGIN FLOW:
+- Patient login via Email + Fingerprint Scan (simulate with animation and button click)
+- Doctor login via License ID + Password
+- Role-based routing using React Router ("/patient/*", "/doctor/*")
+
+📋 CORE SCREENS:
+
+1. Patient Registration Page  
+   - First Name, Last Name, DOB, Email, Phone  
+   - Validations: regex + tooltips  
+
+2. Doctor Registration Page  
+   - License ID, Full Name, Specialization (dropdown)  
+   - Admin-only Verified checkbox  
+
+3. Doctor Dashboard  
+   - Left sidebar: Profile, View Assigned Patients  
+   - Main card area:  
+     ▸ List of all assigned patients  
+     ▸ Searchable/filterable table  
+     ▸ “View History” button for each patient → shows structured summary (insulin, glucose, treatments)  
+     ▸ Notifications for new report uploads  
+
+4. Patient Dashboard  
+   - Left sidebar: Profile, Upload Reports  
+   - Main card area:  
+     ▸ Table of previously uploaded reports (disease name, date, status)  
+     ▸ Button to upload new medical report  
+     ▸ Timeline or chart view of extracted attributes (e.g. insulin values over time)  
+
+5. Medical Report Upload  
+   - Select Disease → Add attributes (e.g. insulin, glucose), Measurement Date  
+   - Upload file (PDF/Image, max 10MB)  
+   - Use dynamic fields and componentized inputs  
+
+6. Consent Management  
+   - Patient grants READ/WRITE/SHARE access to doctors  
+   - Date picker and doctor selector  
+   - Display all active consents  
+
+7. Fingerprint Scan Page  
+   - Biometric scan button (simulate FHE with loading + match success)  
+   - Placeholder component with animation  
+   - PIN fallback input  
+
+🧱 TECH STACK:
+- React + Vite
+- TailwindCSS + shadcn/ui
+- React Router DOM for role-based routes
+- React Hook Form + Zod for validation
+- Axios with mock APIs (no real backend needed now)
+- Lucide-react for icons
+
+📊 UX DESIGN:
+- Futuristic, minimal, glass-style UI
+- Animated transitions on login, dashboard card load, and report uploads
+- Data cards with pills, chips, and clean font hierarchy
+- Dashboards built with Grid + Card components
+
+📦 OUTPUT:
+- Pages: Landing, DoctorLogin, PatientLogin, PatientDashboard, DoctorDashboard
+- Components: FormCard, ReportUploader, HistoryCard, FingerprintButton, TimelineChart, ConsentModal
+- Data: Mocked report uploads, doctor-patient assignments in local state
+
+🧠 BONUS:
+- All dashboards are mobile-responsive
+- Show toast notifications on actions (upload, scan, consent)
+- Use localStorage for temporary login state
+
