@@ -1,40 +1,44 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+
+// Fix __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Project structure
+const clientRoot = path.resolve(__dirname, 'client');
+const clientSrc = path.resolve(clientRoot, 'src');
+const clientPublic = path.resolve(clientRoot, 'public');
+const outDir = path.resolve(__dirname, 'dist');
+
+// Safety checks (optional logs)
+if (!fs.existsSync(clientRoot)) console.warn('WARNING: client/ folder missing.');
+if (!fs.existsSync(clientSrc)) console.warn('WARNING: client/src/ missing.');
 
 export default defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
+  root: clientRoot,
+
+  plugins: [react()],
+
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      '@': clientSrc,
+      '@shared': path.resolve(__dirname, 'shared'),  // FIX for @shared/schema
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
+
+  publicDir: clientPublic,
+
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir,
     emptyOutDir: true,
   },
+
   server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
-    },
+    strictPort: true,
+    port: 5173, // Vite only, backend still serves on 5000
   },
 });
