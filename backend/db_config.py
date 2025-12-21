@@ -634,6 +634,507 @@ class UserDB:
         self.db.disconnect()
 
 
+class PatientReportDB:
+    """
+    Database operations for Patient Reports, Consents, and Assignments
+    """
+    
+    def __init__(self):
+        self.db = DatabaseConnection()
+        if not self.db.connect():
+            raise Exception("Failed to connect to database")
+    
+    # ==================== REPORT OPERATIONS ====================
+    
+    def create_report(self, report_data: dict) -> str:
+        """Create a new patient report"""
+        try:
+            import uuid
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            report_id = report_data.get('id') or str(uuid.uuid4())
+            
+            # Parse uploadedAt timestamp (handles ISO format)
+            uploaded_at = report_data.get('uploadedAt')
+            if uploaded_at:
+                try:
+                    # Handle ISO format like "2025-12-21T21:40:00.000Z"
+                    if 'T' in str(uploaded_at):
+                        uploaded_at = str(uploaded_at).replace('T', ' ').replace('Z', '').split('.')[0]
+                except:
+                    uploaded_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                uploaded_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            query = """
+                INSERT INTO patient_reports (
+                    id, patient_id, disease_name, attributes, measurement_date,
+                    file_name, file_type, status, uploaded_at,
+                    ai_summary, ai_diagnosis, ai_key_findings, ai_recommendations,
+                    ai_test_results, rag_report_id, processed_by_ai
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                report_id,
+                report_data.get('patientId'),
+                report_data.get('diseaseName'),
+                report_data.get('attributes'),
+                report_data.get('measurementDate'),
+                report_data.get('fileName'),
+                report_data.get('fileType'),
+                report_data.get('status', 'pending'),
+                uploaded_at,
+                report_data.get('aiSummary'),
+                report_data.get('aiDiagnosis'),
+                report_data.get('aiKeyFindings'),
+                report_data.get('aiRecommendations'),
+                report_data.get('aiTestResults'),
+                report_data.get('ragReportId'),
+                report_data.get('processedByAi', False)
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Report created with ID: {report_id}")
+            return report_id
+            
+        except Error as e:
+            print(f"Error creating report: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_reports_by_patient_id(self, patient_id: str) -> list:
+        """Get all reports for a patient"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT * FROM patient_reports 
+                WHERE patient_id = %s 
+                ORDER BY uploaded_at DESC
+            """
+            cursor.execute(query, (patient_id,))
+            results = cursor.fetchall()
+            
+            # Convert to camelCase for frontend
+            formatted_results = []
+            for r in results:
+                formatted_results.append({
+                    'id': r['id'],
+                    'patientId': r['patient_id'],
+                    'diseaseName': r['disease_name'],
+                    'attributes': r['attributes'],
+                    'measurementDate': str(r['measurement_date']) if r['measurement_date'] else None,
+                    'fileName': r['file_name'],
+                    'fileType': r['file_type'],
+                    'status': r['status'],
+                    'uploadedAt': str(r['uploaded_at']) if r['uploaded_at'] else None,
+                    'aiSummary': r['ai_summary'],
+                    'aiDiagnosis': r['ai_diagnosis'],
+                    'aiKeyFindings': r['ai_key_findings'],
+                    'aiRecommendations': r['ai_recommendations'],
+                    'aiTestResults': r['ai_test_results'],
+                    'ragReportId': r['rag_report_id'],
+                    'processedByAi': r['processed_by_ai']
+                })
+            
+            return formatted_results
+            
+        except Error as e:
+            print(f"Error retrieving reports: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_report_by_id(self, report_id: str) -> dict:
+        """Get a report by ID"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = "SELECT * FROM patient_reports WHERE id = %s"
+            cursor.execute(query, (report_id,))
+            r = cursor.fetchone()
+            
+            if r:
+                return {
+                    'id': r['id'],
+                    'patientId': r['patient_id'],
+                    'diseaseName': r['disease_name'],
+                    'attributes': r['attributes'],
+                    'measurementDate': str(r['measurement_date']) if r['measurement_date'] else None,
+                    'fileName': r['file_name'],
+                    'fileType': r['file_type'],
+                    'status': r['status'],
+                    'uploadedAt': str(r['uploaded_at']) if r['uploaded_at'] else None,
+                    'aiSummary': r['ai_summary'],
+                    'aiDiagnosis': r['ai_diagnosis'],
+                    'aiKeyFindings': r['ai_key_findings'],
+                    'aiRecommendations': r['ai_recommendations'],
+                    'aiTestResults': r['ai_test_results'],
+                    'ragReportId': r['rag_report_id'],
+                    'processedByAi': r['processed_by_ai']
+                }
+            return None
+            
+        except Error as e:
+            print(f"Error retrieving report: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def update_report_status(self, report_id: str, status: str) -> bool:
+        """Update report status"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = "UPDATE patient_reports SET status = %s WHERE id = %s"
+            cursor.execute(query, (status, report_id))
+            conn.commit()
+            
+            return cursor.rowcount > 0
+            
+        except Error as e:
+            print(f"Error updating report status: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def update_report_ai_data(self, report_id: str, ai_data: dict) -> bool:
+        """Update report with AI-generated data"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                UPDATE patient_reports SET
+                    ai_summary = %s,
+                    ai_diagnosis = %s,
+                    ai_key_findings = %s,
+                    ai_recommendations = %s,
+                    ai_test_results = %s,
+                    rag_report_id = %s,
+                    processed_by_ai = %s
+                WHERE id = %s
+            """
+            
+            values = (
+                ai_data.get('aiSummary'),
+                ai_data.get('aiDiagnosis'),
+                ai_data.get('aiKeyFindings'),
+                ai_data.get('aiRecommendations'),
+                ai_data.get('aiTestResults'),
+                ai_data.get('ragReportId'),
+                ai_data.get('processedByAi', True),
+                report_id
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            return cursor.rowcount > 0
+            
+        except Error as e:
+            print(f"Error updating report AI data: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
+    # ==================== CONSENT OPERATIONS ====================
+    
+    def create_consent(self, consent_data: dict) -> str:
+        """Create a new consent"""
+        try:
+            import uuid
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            consent_id = consent_data.get('id') or str(uuid.uuid4())
+            
+            # Parse createdAt timestamp
+            created_at = consent_data.get('createdAt')
+            if created_at:
+                try:
+                    if 'T' in str(created_at):
+                        created_at = str(created_at).replace('T', ' ').replace('Z', '').split('.')[0]
+                except:
+                    created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            query = """
+                INSERT INTO consents (
+                    id, patient_id, doctor_id, permissions, start_date, end_date, active, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                consent_id,
+                consent_data.get('patientId'),
+                consent_data.get('doctorId'),
+                consent_data.get('permissions'),
+                consent_data.get('startDate'),
+                consent_data.get('endDate'),
+                consent_data.get('active', True),
+                created_at
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Consent created with ID: {consent_id}")
+            return consent_id
+            
+        except Error as e:
+            print(f"Error creating consent: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_consents_by_patient_id(self, patient_id: str) -> list:
+        """Get all consents for a patient"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT c.*, d.full_name as doctor_name, d.specialization
+                FROM consents c
+                LEFT JOIN doctors d ON c.doctor_id = d.id
+                WHERE c.patient_id = %s
+                ORDER BY c.created_at DESC
+            """
+            cursor.execute(query, (patient_id,))
+            results = cursor.fetchall()
+            
+            formatted = []
+            for c in results:
+                formatted.append({
+                    'id': c['id'],
+                    'patientId': c['patient_id'],
+                    'doctorId': c['doctor_id'],
+                    'doctorName': c.get('doctor_name'),
+                    'specialization': c.get('specialization'),
+                    'permissions': c['permissions'],
+                    'startDate': str(c['start_date']) if c['start_date'] else None,
+                    'endDate': str(c['end_date']) if c['end_date'] else None,
+                    'active': c['active'],
+                    'createdAt': str(c['created_at']) if c['created_at'] else None
+                })
+            
+            return formatted
+            
+        except Error as e:
+            print(f"Error retrieving consents: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_consents_by_doctor_id(self, doctor_id: str) -> list:
+        """Get all consents for a doctor"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT c.*, p.first_name, p.last_name, p.email
+                FROM consents c
+                LEFT JOIN patients p ON c.patient_id = p.id
+                WHERE c.doctor_id = %s AND c.active = TRUE
+                ORDER BY c.created_at DESC
+            """
+            cursor.execute(query, (doctor_id,))
+            results = cursor.fetchall()
+            
+            formatted = []
+            for c in results:
+                formatted.append({
+                    'id': c['id'],
+                    'patientId': c['patient_id'],
+                    'patientName': f"{c.get('first_name', '')} {c.get('last_name', '')}".strip(),
+                    'patientEmail': c.get('email'),
+                    'doctorId': c['doctor_id'],
+                    'permissions': c['permissions'],
+                    'startDate': str(c['start_date']) if c['start_date'] else None,
+                    'endDate': str(c['end_date']) if c['end_date'] else None,
+                    'active': c['active'],
+                    'createdAt': str(c['created_at']) if c['created_at'] else None
+                })
+            
+            return formatted
+            
+        except Error as e:
+            print(f"Error retrieving consents: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def revoke_consent(self, consent_id: str) -> bool:
+        """Revoke a consent"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = "UPDATE consents SET active = FALSE WHERE id = %s"
+            cursor.execute(query, (consent_id,))
+            conn.commit()
+            
+            return cursor.rowcount > 0
+            
+        except Error as e:
+            print(f"Error revoking consent: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
+    # ==================== ASSIGNMENT OPERATIONS ====================
+    
+    def create_assignment(self, assignment_data: dict) -> str:
+        """Create a doctor-patient assignment"""
+        try:
+            import uuid
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            assignment_id = assignment_data.get('id') or str(uuid.uuid4())
+            
+            # Parse assignedAt timestamp
+            assigned_at = assignment_data.get('assignedAt')
+            if assigned_at:
+                try:
+                    if 'T' in str(assigned_at):
+                        assigned_at = str(assigned_at).replace('T', ' ').replace('Z', '').split('.')[0]
+                except:
+                    assigned_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                assigned_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            query = """
+                INSERT INTO assignments (id, doctor_id, patient_id, assigned_at)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE assigned_at = VALUES(assigned_at)
+            """
+            
+            values = (
+                assignment_id,
+                assignment_data.get('doctorId'),
+                assignment_data.get('patientId'),
+                assigned_at
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            return assignment_id
+            
+        except Error as e:
+            print(f"Error creating assignment: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_assignments_by_doctor_id(self, doctor_id: str) -> list:
+        """Get all patients assigned to a doctor"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT a.*, p.first_name, p.last_name, p.email, p.phone, p.date_of_birth
+                FROM assignments a
+                LEFT JOIN patients p ON a.patient_id = p.id
+                WHERE a.doctor_id = %s
+                ORDER BY a.assigned_at DESC
+            """
+            cursor.execute(query, (doctor_id,))
+            results = cursor.fetchall()
+            
+            formatted = []
+            for a in results:
+                formatted.append({
+                    'id': a['id'],
+                    'doctorId': a['doctor_id'],
+                    'patientId': a['patient_id'],
+                    'patientName': f"{a.get('first_name', '')} {a.get('last_name', '')}".strip(),
+                    'patientEmail': a.get('email'),
+                    'patientPhone': a.get('phone'),
+                    'patientDOB': str(a['date_of_birth']) if a.get('date_of_birth') else None,
+                    'assignedAt': str(a['assigned_at']) if a['assigned_at'] else None
+                })
+            
+            return formatted
+            
+        except Error as e:
+            print(f"Error retrieving assignments: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_assignments_by_patient_id(self, patient_id: str) -> list:
+        """Get all doctors assigned to a patient"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT a.*, d.full_name, d.specialization, d.license_id
+                FROM assignments a
+                LEFT JOIN doctors d ON a.doctor_id = d.id
+                WHERE a.patient_id = %s
+                ORDER BY a.assigned_at DESC
+            """
+            cursor.execute(query, (patient_id,))
+            results = cursor.fetchall()
+            
+            formatted = []
+            for a in results:
+                formatted.append({
+                    'id': a['id'],
+                    'doctorId': a['doctor_id'],
+                    'doctorName': a.get('full_name'),
+                    'specialization': a.get('specialization'),
+                    'licenseId': a.get('license_id'),
+                    'patientId': a['patient_id'],
+                    'assignedAt': str(a['assigned_at']) if a['assigned_at'] else None
+                })
+            
+            return formatted
+            
+        except Error as e:
+            print(f"Error retrieving assignments: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def close(self):
+        """Close the database connection"""
+        self.db.disconnect()
+
+
 # Utility function to test database connection
 def test_connection():
     """Test the database connection"""

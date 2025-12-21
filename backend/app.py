@@ -44,11 +44,13 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 from routes.reports import reports_bp
 from routes.chat import chat_bp
 from routes.users import users_bp
+from routes.data import data_bp
 
 # Register blueprints
 app.register_blueprint(reports_bp, url_prefix='/api/reports')
 app.register_blueprint(chat_bp, url_prefix='/api/chat')
 app.register_blueprint(users_bp)  # User routes handle their own URL prefixes
+app.register_blueprint(data_bp)   # Data routes handle their own URL prefixes
 
 @app.before_request
 def log_request():

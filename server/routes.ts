@@ -94,7 +94,22 @@ export async function registerRoutes(
         const result = await flaskResponse.json() as any;
 
         if (flaskResponse.ok && result.success) {
-          return res.json(result.patient);
+          // Sync patient to in-memory storage for report uploads to work
+          const patientData = result.patient;
+          const existingPatient = await storage.getPatient(patientData.id);
+          if (!existingPatient) {
+            // Create in-memory record with MySQL data
+            await storage.syncPatientFromMySQL({
+              id: patientData.id,
+              firstName: patientData.firstName,
+              lastName: patientData.lastName,
+              email: patientData.email,
+              phone: patientData.phone,
+              dateOfBirth: patientData.dateOfBirth,
+              pin: pin, // Store the PIN for session
+            });
+          }
+          return res.json(patientData);
         } else if (!flaskResponse.ok) {
           // Flask returned an error - return it to the client
           return res.status(flaskResponse.status).json({ message: result.error || "Invalid email or PIN" });
@@ -185,7 +200,20 @@ export async function registerRoutes(
         const result = await flaskResponse.json() as any;
 
         if (flaskResponse.ok && result.success) {
-          return res.json(result.doctor);
+          // Sync doctor to in-memory storage for session compatibility
+          const doctorData = result.doctor;
+          const existingDoctor = await storage.getDoctor(doctorData.id);
+          if (!existingDoctor) {
+            await storage.syncDoctorFromMySQL({
+              id: doctorData.id,
+              licenseId: doctorData.licenseId,
+              fullName: doctorData.fullName,
+              specialization: doctorData.specialization,
+              password: validation.data.password,
+              verified: doctorData.verified,
+            });
+          }
+          return res.json(doctorData);
         }
       } catch (flaskError) {
         console.log("Flask unavailable, falling back to in-memory storage");
@@ -217,10 +245,24 @@ export async function registerRoutes(
     }
   });
 
-  // Get patient reports
+  // Get patient reports - Try MySQL first
   app.get("/api/patients/:patientId/reports", async (req, res) => {
     try {
       const { patientId } = req.params;
+      
+      // Try Flask/MySQL first
+      try {
+        const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}/reports`);
+        const result = await flaskResponse.json() as any;
+        
+        if (flaskResponse.ok && result.success && result.reports.length > 0) {
+          return res.json(result.reports);
+        }
+      } catch (flaskError) {
+        console.log("Flask unavailable for reports, using in-memory");
+      }
+      
+      // Fallback to in-memory storage
       const reports = await storage.getReportsByPatientId(patientId);
       res.json(reports);
     } catch (error) {
@@ -229,7 +271,7 @@ export async function registerRoutes(
     }
   });
 
-  // Create patient report
+  // Create patient report - Persist to MySQL
   app.post("/api/patients/:patientId/reports", async (req, res) => {
     try {
       const { patientId } = req.params;
@@ -240,7 +282,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Patient not found" });
       }
 
-      const report = await storage.createReport({
+      const reportData = {
         patientId,
         diseaseName,
         attributes: JSON.stringify(attributes),
@@ -249,7 +291,21 @@ export async function registerRoutes(
         fileType: null,
         status: "pending",
         uploadedAt: new Date().toISOString(),
-      });
+      };
+
+      // Create in memory first
+      const report = await storage.createReport(reportData);
+
+      // Also persist to MySQL
+      try {
+        await fetch(`${FLASK_BACKEND_URL}/api/reports`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...reportData, id: report.id }),
+        });
+      } catch (flaskError) {
+        console.log("Failed to persist report to MySQL:", flaskError);
+      }
 
       res.status(201).json(report);
     } catch (error) {
@@ -314,7 +370,7 @@ export async function registerRoutes(
       }
 
       // Create report with or without AI data
-      const report = await storage.createReport({
+      const reportData = {
         patientId,
         diseaseName: aiResponse?.extracted_info?.report_type || req.body.diseaseName || "Medical Report",
         attributes: JSON.stringify(aiResponse?.extracted_info?.test_results || []),
@@ -332,7 +388,21 @@ export async function registerRoutes(
           : null,
         ragReportId: null, // Can be set if using RAG chat
         processedByAi: !!aiResponse?.success,
-      });
+      };
+      
+      const report = await storage.createReport(reportData);
+
+      // Persist to MySQL
+      try {
+        await fetch(`${FLASK_BACKEND_URL}/api/reports`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...reportData, id: report.id }),
+        });
+        console.log("Report persisted to MySQL");
+      } catch (persistError) {
+        console.log("Failed to persist report to MySQL:", persistError);
+      }
 
       res.status(201).json({
         success: true,
@@ -391,10 +461,23 @@ export async function registerRoutes(
     }
   });
 
-  // Get patient consents
+  // Get patient consents - Try MySQL first
   app.get("/api/patients/:patientId/consents", async (req, res) => {
     try {
       const { patientId } = req.params;
+      
+      // Try Flask/MySQL first
+      try {
+        const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}/consents`);
+        const result = await flaskResponse.json() as any;
+        
+        if (flaskResponse.ok && result.success && result.consents.length > 0) {
+          return res.json(result.consents);
+        }
+      } catch (flaskError) {
+        console.log("Flask unavailable for consents, using in-memory");
+      }
+      
       const consents = await storage.getConsentsByPatientId(patientId);
       res.json(consents);
     } catch (error) {
@@ -403,7 +486,7 @@ export async function registerRoutes(
     }
   });
 
-  // Create patient consent
+  // Create patient consent - Persist to MySQL
   app.post("/api/patients/:patientId/consents", async (req, res) => {
     try {
       const { patientId } = req.params;
@@ -419,7 +502,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Doctor not found" });
       }
 
-      const consent = await storage.createConsent({
+      const consentData = {
         patientId,
         doctorId,
         permissions: JSON.stringify(permissions),
@@ -427,18 +510,44 @@ export async function registerRoutes(
         endDate,
         active: true,
         createdAt: new Date().toISOString(),
-      });
+      };
+
+      const consent = await storage.createConsent(consentData);
+
+      // Persist consent to MySQL
+      try {
+        await fetch(`${FLASK_BACKEND_URL}/api/consents`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...consentData, id: consent.id }),
+        });
+      } catch (flaskError) {
+        console.log("Failed to persist consent to MySQL:", flaskError);
+      }
 
       // Also create an assignment if one doesn't exist
       const existingAssignments = await storage.getAssignmentsByDoctorId(doctorId);
       const alreadyAssigned = existingAssignments.some((a) => a.patientId === patientId);
       
       if (!alreadyAssigned) {
-        await storage.createAssignment({
+        const assignmentData = {
           doctorId,
           patientId,
           assignedAt: new Date().toISOString(),
-        });
+        };
+        
+        const assignment = await storage.createAssignment(assignmentData);
+        
+        // Persist assignment to MySQL
+        try {
+          await fetch(`${FLASK_BACKEND_URL}/api/assignments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...assignmentData, id: assignment.id }),
+          });
+        } catch (flaskError) {
+          console.log("Failed to persist assignment to MySQL:", flaskError);
+        }
       }
 
       res.status(201).json(consent);
@@ -448,7 +557,7 @@ export async function registerRoutes(
     }
   });
 
-  // Revoke consent
+  // Revoke consent - Also revoke in MySQL
   app.delete("/api/consents/:consentId", async (req, res) => {
     try {
       const { consentId } = req.params;
@@ -458,6 +567,15 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Consent not found" });
       }
 
+      // Revoke in MySQL
+      try {
+        await fetch(`${FLASK_BACKEND_URL}/api/consents/${consentId}/revoke`, {
+          method: "POST",
+        });
+      } catch (flaskError) {
+        console.log("Failed to revoke consent in MySQL:", flaskError);
+      }
+
       res.json(consent);
     } catch (error) {
       console.error("Revoke consent error:", error);
@@ -465,10 +583,47 @@ export async function registerRoutes(
     }
   });
 
-  // Get doctor's assigned patients
+  // Get doctor's assigned patients - Try MySQL first
   app.get("/api/doctors/:doctorId/patients", async (req, res) => {
     try {
       const { doctorId } = req.params;
+      
+      // Try Flask/MySQL first for assignments
+      try {
+        const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/doctors/${doctorId}/assignments`);
+        const result = await flaskResponse.json() as any;
+        
+        if (flaskResponse.ok && result.success && result.assignments.length > 0) {
+          // Get reports for each patient from MySQL
+          const patientsWithReports = await Promise.all(
+            result.assignments.map(async (a: any) => {
+              let reports: any[] = [];
+              try {
+                const reportsResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${a.patientId}/reports`);
+                const reportsResult = await reportsResponse.json() as any;
+                if (reportsResult.success) {
+                  reports = reportsResult.reports;
+                }
+              } catch {}
+              
+              return {
+                id: a.patientId,
+                firstName: a.patientName?.split(' ')[0] || '',
+                lastName: a.patientName?.split(' ').slice(1).join(' ') || '',
+                email: a.patientEmail,
+                phone: a.patientPhone,
+                dateOfBirth: a.patientDOB,
+                reports,
+              };
+            })
+          );
+          return res.json(patientsWithReports);
+        }
+      } catch (flaskError) {
+        console.log("Flask unavailable, using in-memory");
+      }
+      
+      // Fallback to in-memory
       const assignments = await storage.getAssignmentsByDoctorId(doctorId);
       
       const patientsWithReports = await Promise.all(

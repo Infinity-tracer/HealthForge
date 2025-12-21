@@ -168,6 +168,33 @@ CREATE TABLE IF NOT EXISTS assignments (
     UNIQUE KEY unique_doctor_patient (doctor_id, patient_id)
 );
 
+-- Patient reports table (for frontend uploaded reports)
+CREATE TABLE IF NOT EXISTS patient_reports (
+    id VARCHAR(36) PRIMARY KEY,
+    patient_id VARCHAR(36) NOT NULL,
+    disease_name VARCHAR(255) NOT NULL,
+    attributes TEXT NOT NULL,  -- JSON array of attributes
+    measurement_date DATE NOT NULL,
+    file_name VARCHAR(255),
+    file_type VARCHAR(100),
+    status ENUM('pending', 'reviewed', 'archived') DEFAULT 'pending',
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- AI-generated fields
+    ai_summary TEXT,
+    ai_diagnosis TEXT,
+    ai_key_findings TEXT,
+    ai_recommendations TEXT,
+    ai_test_results TEXT,
+    rag_report_id VARCHAR(50),
+    processed_by_ai BOOLEAN DEFAULT FALSE,
+    
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    INDEX idx_report_patient (patient_id),
+    INDEX idx_report_date (measurement_date),
+    INDEX idx_report_status (status)
+);
+
 -- Sample queries for reference:
 
 -- Get all reports for a patient

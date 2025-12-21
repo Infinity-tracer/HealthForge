@@ -24,12 +24,14 @@ export interface IStorage {
   getPatient(id: string): Promise<Patient | undefined>;
   getPatientByEmail(email: string): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
+  syncPatientFromMySQL(patient: Patient): Promise<Patient>;
   getAllPatients(): Promise<Patient[]>;
 
   // Doctors
   getDoctor(id: string): Promise<Doctor | undefined>;
   getDoctorByLicenseId(licenseId: string): Promise<Doctor | undefined>;
   createDoctor(doctor: InsertDoctor): Promise<Doctor>;
+  syncDoctorFromMySQL(doctor: Doctor): Promise<Doctor>;
   getAllDoctors(): Promise<Doctor[]>;
 
   // Medical Reports
@@ -242,6 +244,12 @@ export class MemStorage implements IStorage {
     return patient;
   }
 
+  // Sync patient from MySQL to in-memory storage (preserves MySQL ID)
+  async syncPatientFromMySQL(patient: Patient): Promise<Patient> {
+    this.patients.set(patient.id, patient);
+    return patient;
+  }
+
   async getAllPatients(): Promise<Patient[]> {
     return Array.from(this.patients.values());
   }
@@ -259,6 +267,12 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const doctor: Doctor = { ...insertDoctor, id, verified: insertDoctor.verified ?? false };
     this.doctors.set(id, doctor);
+    return doctor;
+  }
+
+  // Sync doctor from MySQL to in-memory storage (preserves MySQL ID)
+  async syncDoctorFromMySQL(doctor: Doctor): Promise<Doctor> {
+    this.doctors.set(doctor.id, doctor);
     return doctor;
   }
 
