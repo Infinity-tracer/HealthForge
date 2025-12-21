@@ -42,6 +42,14 @@ export const medicalReports = pgTable("medical_reports", {
   fileType: text("file_type"),
   status: text("status").notNull().default("pending"), // pending, reviewed, archived
   uploadedAt: text("uploaded_at").notNull(),
+  // AI-generated fields from Flask RAG API
+  aiSummary: text("ai_summary"), // AI-generated summary of the report
+  aiDiagnosis: text("ai_diagnosis"), // AI-extracted diagnosis
+  aiKeyFindings: text("ai_key_findings"), // AI-extracted key findings
+  aiRecommendations: text("ai_recommendations"), // AI-extracted recommendations
+  aiTestResults: text("ai_test_results"), // JSON array of extracted test results
+  ragReportId: text("rag_report_id"), // Report ID from the RAG service for chat
+  processedByAi: boolean("processed_by_ai").default(false), // Whether report was processed by AI
 });
 
 export const insertMedicalReportSchema = createInsertSchema(medicalReports).omit({ id: true });

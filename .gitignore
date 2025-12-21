@@ -1,6 +1,70 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+server/public/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+backend/.env
+rag-service/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+ENV/
+env/
+backend/DBback/
+
+# FAISS indexes (generated)
+faiss_index/
+faiss_index_*/
+faiss_indexes/
+
+# Logs
+logs/
+*.log
+backend/logs/
+
+# IDE & Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
 .DS_Store
-server/public
+Thumbs.db
+desktop.ini
+
+# Temp files
+*.tmp
+*.temp
 vite.config.ts.*
+
+# Archives
 *.tar.gz
+*.zip
+
+# Uploads (if storing locally)
+uploads/
+backend/uploads/
+
+# Replit
+.replit
+.local/
+replit.nix

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, FileText, Calendar, Activity } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Calendar, Activity, Brain, Stethoscope, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { MedicalReport } from "@shared/schema";
@@ -61,6 +62,12 @@ export function HistoryCard({ report, className }: HistoryCardProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {report.processedByAi && (
+              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+                <Brain className="w-3 h-3 mr-1" />
+                AI
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className={cn("capitalize", statusColors[report.status])}
@@ -136,6 +143,58 @@ export function HistoryCard({ report, className }: HistoryCardProps) {
                       {report.fileType}
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* AI Summary Section */}
+            {report.processedByAi && report.aiSummary && (
+              <div>
+                <Separator className="my-4" />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-primary" />
+                    <h4 className="text-sm font-medium">AI-Generated Summary</h4>
+                  </div>
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 text-sm leading-relaxed">
+                    {report.aiSummary}
+                  </div>
+
+                  {report.aiDiagnosis && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <Stethoscope className="w-4 h-4" />
+                        <span>Diagnosis</span>
+                      </div>
+                      <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/10 text-sm">
+                        {report.aiDiagnosis}
+                      </div>
+                    </div>
+                  )}
+
+                  {report.aiKeyFindings && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Key Findings</span>
+                      </div>
+                      <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/10 text-sm">
+                        {report.aiKeyFindings}
+                      </div>
+                    </div>
+                  )}
+
+                  {report.aiRecommendations && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <FileText className="w-4 h-4" />
+                        <span>Recommendations</span>
+                      </div>
+                      <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/10 text-sm">
+                        {report.aiRecommendations}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

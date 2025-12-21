@@ -37,6 +37,15 @@ export interface IStorage {
   getReportsByPatientId(patientId: string): Promise<MedicalReport[]>;
   createReport(report: InsertMedicalReport): Promise<MedicalReport>;
   updateReportStatus(id: string, status: string): Promise<MedicalReport | undefined>;
+  updateReportWithAISummary(id: string, aiData: {
+    aiSummary?: string;
+    aiDiagnosis?: string;
+    aiKeyFindings?: string;
+    aiRecommendations?: string;
+    aiTestResults?: string;
+    ragReportId?: string;
+    processedByAi?: boolean;
+  }): Promise<MedicalReport | undefined>;
 
   // Consents
   getConsent(id: string): Promise<Consent | undefined>;
@@ -276,6 +285,13 @@ export class MemStorage implements IStorage {
       status: insertReport.status || "pending",
       fileName: insertReport.fileName || null,
       fileType: insertReport.fileType || null,
+      aiSummary: insertReport.aiSummary || null,
+      aiDiagnosis: insertReport.aiDiagnosis || null,
+      aiKeyFindings: insertReport.aiKeyFindings || null,
+      aiRecommendations: insertReport.aiRecommendations || null,
+      aiTestResults: insertReport.aiTestResults || null,
+      ragReportId: insertReport.ragReportId || null,
+      processedByAi: insertReport.processedByAi || false,
     };
     this.reports.set(id, report);
     return report;
@@ -285,6 +301,29 @@ export class MemStorage implements IStorage {
     const report = this.reports.get(id);
     if (report) {
       report.status = status;
+      this.reports.set(id, report);
+    }
+    return report;
+  }
+
+  async updateReportWithAISummary(id: string, aiData: {
+    aiSummary?: string;
+    aiDiagnosis?: string;
+    aiKeyFindings?: string;
+    aiRecommendations?: string;
+    aiTestResults?: string;
+    ragReportId?: string;
+    processedByAi?: boolean;
+  }): Promise<MedicalReport | undefined> {
+    const report = this.reports.get(id);
+    if (report) {
+      if (aiData.aiSummary !== undefined) report.aiSummary = aiData.aiSummary;
+      if (aiData.aiDiagnosis !== undefined) report.aiDiagnosis = aiData.aiDiagnosis;
+      if (aiData.aiKeyFindings !== undefined) report.aiKeyFindings = aiData.aiKeyFindings;
+      if (aiData.aiRecommendations !== undefined) report.aiRecommendations = aiData.aiRecommendations;
+      if (aiData.aiTestResults !== undefined) report.aiTestResults = aiData.aiTestResults;
+      if (aiData.ragReportId !== undefined) report.ragReportId = aiData.ragReportId;
+      if (aiData.processedByAi !== undefined) report.processedByAi = aiData.processedByAi;
       this.reports.set(id, report);
     }
     return report;

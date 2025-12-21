@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Upload, X, Plus, FileText, Image, Loader2 } from "lucide-react";
+import { Upload, X, Plus, FileText, Image, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { diseaseTypes } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const reportSchema = z.object({
   diseaseName: z.string().min(1, "Please select a disease type"),
@@ -36,20 +37,62 @@ const reportSchema = z.object({
     })
   ),
   measurementDate: z.string().min(1, "Measurement date required"),
+  patientId: z.string().optional(),
 });
 
 type ReportFormData = z.infer<typeof reportSchema>;
 
-interface ReportUploaderProps {
-  onSubmit: (data: ReportFormData, file?: File) => void;
-  isLoading?: boolean;
-  onCancel?: () => void;
+interface UploadResponse {
+  success: boolean;
+  report_id: string;
+  patient_name?: string;
+  diagnosis?: string;
+  summary?: string;
+  message: string;
 }
 
-export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploaderProps) {
+interface ReportUploaderProps {
+  onSubmit: (data: ReportFormData, file?: File, uploadResponse?: UploadResponse) => void;
+  isLoading?: boolean;
+  onCancel?: () => void;
+  onUploadSuccess?: (reportId: string, reportData: UploadResponse) => void;
+  onUploadError?: (error: string) => void;
+  patientId?: string;
+  enableRAGProcessing?: boolean;
+}
+
+export function ReportUploader({
+  onSubmit,
+  isLoading,
+  onCancel,
+  onUploadSuccess,
+  onUploadError,
+  patientId,
+  enableRAGProcessing = false,
+}: ReportUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<{
+    stage: string;
+    status: "pending" | "processing" | "success" | "error";
+  }>({
+    stage: "",
+    status: "pending",
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processingStages = [
+    "Validating file...",
+    "Extracting text from PDF...",
+    "Splitting text into chunks...",
+    "Creating embeddings...",
+    "Generating vector store...",
+    "Extracting medical information...",
+    "Generating summary...",
+    "Saving to database...",
+    "Complete!",
+  ];
 
   const form = useForm<ReportFormData>({
     resolver: zodResolver(reportSchema),
@@ -57,6 +100,7 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
       diseaseName: "",
       attributes: [],
       measurementDate: new Date().toISOString().split("T")[0],
+      patientId: patientId || "",
     },
   });
 
@@ -69,7 +113,6 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
 
   const handleDiseaseChange = (value: string) => {
     form.setValue("diseaseName", value);
-    
     const disease = diseaseTypes.find((d) => d.name === value);
     if (disease) {
       form.setValue(
@@ -79,7 +122,7 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
     }
   };
 
-  const handleDrag = (e: React.DragEvent) => {
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.type === "dragenter" || e.type === "dragover") {
@@ -89,31 +132,46 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       validateAndSetFile(e.dataTransfer.files[0]);
     }
   };
 
   const validateAndSetFile = (selectedFile: File) => {
-    const maxSize = 10 * 1024 * 1024;
+    const maxSize = 50 * 1024 * 1024; // 50MB for RAG processing
     const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/gif"];
-    
+
     if (selectedFile.size > maxSize) {
-      alert("File size must be less than 10MB");
+      setUploadStatus({
+        stage: "File too large. Maximum 50MB.",
+        status: "error",
+      });
       return;
     }
-    
-    if (!allowedTypes.includes(selectedFile.type)) {
-      alert("Only PDF and image files are allowed");
+
+    // For RAG processing, only PDF is allowed
+    if (enableRAGProcessing && selectedFile.type !== "application/pdf") {
+      setUploadStatus({
+        stage: "Invalid file type. Only PDF accepted for RAG processing.",
+        status: "error",
+      });
       return;
     }
-    
+
+    if (!enableRAGProcessing && !allowedTypes.includes(selectedFile.type)) {
+      setUploadStatus({
+        stage: "Only PDF and image files are allowed",
+        status: "error",
+      });
+      return;
+    }
+
     setFile(selectedFile);
+    setUploadStatus({ stage: "", status: "pending" });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,37 +180,123 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
     }
   };
 
-  const handleSubmit = (data: ReportFormData) => {
-    onSubmit(data, file || undefined);
+  const handleRAGUpload = async (): Promise<boolean> => {
+    if (!file) {
+      const errorMsg = "Please select a file";
+      onUploadError?.(errorMsg);
+      setUploadStatus({
+        stage: errorMsg,
+        status: "error",
+      });
+      return false;
+    }
+
+    setProgress(0);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Simulate progress for processing stages
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev < 95) {
+            const nextStage = Math.floor((prev / 100) * processingStages.length);
+            setUploadStatus({
+              stage: processingStages[nextStage] || "Processing...",
+              status: "processing",
+            });
+            return prev + Math.random() * 15;
+          }
+          return prev;
+        });
+      }, 600);
+
+      // Use the Node.js server endpoint which triggers the Flask API
+      const response = await fetch(
+        `/api/patients/${patientId}/reports/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Upload failed");
+      }
+
+      const data = await response.json();
+
+      setProgress(100);
+      setUploadStatus({
+        stage: data.aiProcessed 
+          ? "Report processed with AI successfully!" 
+          : "Report uploaded successfully!",
+        status: "success",
+      });
+
+      // Wait a moment to show completion
+      setTimeout(() => {
+        onUploadSuccess?.(data.report.id, data);
+        setFile(null);
+        setProgress(0);
+        setUploadStatus({ stage: "", status: "pending" });
+      }, 1500);
+      
+      return true;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Upload failed";
+      setUploadStatus({
+        stage: errorMsg,
+        status: "error",
+      });
+      onUploadError?.(errorMsg);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (data: ReportFormData) => {
+    if (file && patientId) {
+      // If we have a file and patient ID, upload with AI processing
+      const success = await handleRAGUpload();
+      if (!success) {
+        // Fall back to standard submission without AI processing
+        onSubmit(data, file);
+      }
+    } else {
+      // Standard form submission without file
+      onSubmit(data, file || undefined);
+    }
   };
 
   const getFileIcon = () => {
-    if (!file) return <Upload className="w-12 h-12 text-muted-foreground" />;
-    if (file.type === "application/pdf") return <FileText className="w-12 h-12 text-red-500" />;
-    return <Image className="w-12 h-12 text-blue-500" />;
+    if (!file) return null;
+    if (file.type === "application/pdf") return <FileText className="w-5 h-5" />;
+    return <Image className="w-5 h-5" />;
   };
 
   return (
-    <Card className="w-full">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="w-5 h-5" />
-          Upload Medical Report
-        </CardTitle>
+        <CardTitle>Upload Medical Report</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+            {/* Disease/Test Type Selection */}
             <FormField
               control={form.control}
               name="diseaseName"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Disease/Test Type</FormLabel>
-                  <Select onValueChange={handleDiseaseChange} value={field.value}>
+                  <Select value={field.value} onValueChange={handleDiseaseChange}>
                     <FormControl>
-                      <SelectTrigger data-testid="select-disease-type">
-                        <SelectValue placeholder="Select disease or test type" />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a disease type" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -168,78 +312,70 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
               )}
             />
 
+            {/* Measurements Section */}
             {fields.length > 0 && (
               <div className="space-y-4">
-                <Label>Measurements</Label>
-                <div className="grid gap-4">
-                  {fields.map((field, index) => (
-                    <div
-                      key={field.id}
-                      className="flex items-end gap-3 p-4 rounded-lg bg-muted/50"
+                <h3 className="font-semibold">Measurements</h3>
+                {fields.map((field, index) => (
+                  <div key={field.id} className="grid grid-cols-3 gap-4 items-end">
+                    <FormField
+                      control={form.control}
+                      name={`attributes.${index}.name`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Attribute</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Attribute name" disabled />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`attributes.${index}.value`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Value</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Value" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`attributes.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unit</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Unit" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(index)}
+                      data-testid={`button-remove-attribute-${index}`}
+                      className="text-red-500 hover:text-red-700"
                     >
-                      <FormField
-                        control={form.control}
-                        name={`attributes.${index}.name`}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel className="text-xs">Attribute</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Attribute name"
-                                data-testid={`input-attribute-name-${index}`}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`attributes.${index}.value`}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel className="text-xs">Value</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Value"
-                                data-testid={`input-attribute-value-${index}`}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`attributes.${index}.unit`}
-                        render={({ field }) => (
-                          <FormItem className="w-24">
-                            <FormLabel className="text-xs">Unit</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="mg/dL"
-                                data-testid={`input-attribute-unit-${index}`}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => remove(index)}
-                        data-testid={`button-remove-attribute-${index}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
 
+            {/* Add Custom Attribute */}
             {selectedDisease && (
               <Button
                 type="button"
@@ -247,12 +383,14 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
                 size="sm"
                 onClick={() => append({ name: "", value: "", unit: "" })}
                 data-testid="button-add-attribute"
+                className="w-full"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Custom Attribute
               </Button>
             )}
 
+            {/* Measurement Date */}
             <FormField
               control={form.control}
               name="measurementDate"
@@ -260,106 +398,137 @@ export function ReportUploader({ onSubmit, isLoading, onCancel }: ReportUploader
                 <FormItem>
                   <FormLabel>Measurement Date</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} data-testid="input-measurement-date" />
+                    <Input {...field} type="date" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="space-y-2">
-              <Label>Upload File (Optional)</Label>
+            {/* File Upload Section */}
+            <FormItem>
+              <FormLabel>Upload File (Optional)</FormLabel>
               <div
-                className={cn(
-                  "relative border-2 border-dashed rounded-lg p-8 transition-all",
-                  "flex flex-col items-center justify-center gap-4",
-                  dragActive
-                    ? "border-primary bg-primary/5"
-                    : "border-muted-foreground/25 hover:border-muted-foreground/50",
-                  file && "border-green-500/50 bg-green-500/5"
-                )}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
+                className={cn(
+                  "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition",
+                  dragActive
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-300 hover:border-gray-400",
+                  isLoading && "opacity-50 cursor-not-allowed"
+                )}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,image/*"
                   onChange={handleFileChange}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  data-testid="input-file-upload"
+                  disabled={isLoading}
+                  className="hidden"
+                  id="file-input"
+                  accept={enableRAGProcessing ? ".pdf" : ".pdf,.jpg,.jpeg,.png,.gif"}
                 />
-                
-                {getFileIcon()}
-                
-                {file ? (
-                  <div className="text-center">
-                    <p className="font-medium text-foreground">{file.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setFile(null);
-                      }}
-                      className="mt-2"
-                      data-testid="button-remove-file"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Remove
-                    </Button>
+                <label htmlFor="file-input" className="cursor-pointer">
+                  <div className="flex justify-center mb-2">
+                    {getFileIcon() ? (
+                      <div className="text-blue-500">{getFileIcon()}</div>
+                    ) : (
+                      <Upload className="w-12 h-12 text-gray-400" />
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center">
-                    <p className="text-foreground font-medium">
-                      Drag and drop your file here
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      or click to browse
-                    </p>
-                    <div className="flex gap-2 mt-3 justify-center">
-                      <Badge variant="secondary">PDF</Badge>
-                      <Badge variant="secondary">Image</Badge>
-                      <Badge variant="secondary">Max 10MB</Badge>
-                    </div>
-                  </div>
+                  <p className="text-sm text-gray-600 font-medium">
+                    {file ? file.name : "Drag and drop your file here"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {file && (
+                      <>
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                        <br />
+                      </>
+                    )}
+                    {enableRAGProcessing ? "PDF only" : "PDF, JPG, PNG, GIF"} • Max 50MB
+                  </p>
+                </label>
+
+                {file && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setFile(null);
+                      setUploadStatus({ stage: "", status: "pending" });
+                    }}
+                    data-testid="button-remove-file"
+                    className="mt-2 text-red-500 hover:text-red-700"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Remove
+                  </Button>
                 )}
               </div>
-            </div>
+            </FormItem>
 
+            {/* Upload Status Alert */}
+            {uploadStatus.status !== "pending" && (
+              <Alert
+                variant={
+                  uploadStatus.status === "error"
+                    ? "destructive"
+                    : uploadStatus.status === "success"
+                    ? "default"
+                    : "default"
+                }
+              >
+                <div className="flex items-center gap-2">
+                  {uploadStatus.status === "processing" && (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  )}
+                  {uploadStatus.status === "success" && (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
+                  {uploadStatus.status === "error" && (
+                    <AlertCircle className="w-4 h-4" />
+                  )}
+                  <AlertDescription>{uploadStatus.stage}</AlertDescription>
+                </div>
+              </Alert>
+            )}
+
+            {/* Progress Bar */}
+            {uploadStatus.status === "processing" && (
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <div className="flex gap-3 pt-4">
               {onCancel && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onCancel}
-                  className="flex-1"
-                  data-testid="button-cancel-upload"
-                >
+                <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
                   Cancel
                 </Button>
               )}
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || uploadStatus.status === "processing"}
                 className="flex-1"
-                data-testid="button-submit-report"
               >
-                {isLoading ? (
+                {isLoading || uploadStatus.status === "processing" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Uploading...
+                    {enableRAGProcessing ? "Processing..." : "Uploading..."}
                   </>
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2" />
-                    Upload Report
+                    {enableRAGProcessing ? "Upload and Process" : "Upload Report"}
                   </>
                 )}
               </Button>

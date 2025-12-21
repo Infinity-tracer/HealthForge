@@ -181,6 +181,25 @@ export default function PatientDashboard() {
     });
   };
 
+  const handleUploadSuccess = (reportId: string, reportData: any) => {
+    queryClient.invalidateQueries({ queryKey: ["/api/patients", user?.id, "reports"] });
+    setShowUploader(false);
+    toast({
+      title: reportData.aiProcessed ? "Report Processed with AI" : "Report Uploaded",
+      description: reportData.aiProcessed 
+        ? "Your medical report has been analyzed and summary is ready." 
+        : "Your medical report has been saved successfully.",
+    });
+  };
+
+  const handleUploadError = (error: string) => {
+    toast({
+      title: "Upload Failed",
+      description: error || "Failed to upload the report. Please try again.",
+      variant: "destructive",
+    });
+  };
+
   const handleGrantConsent = (data: any) => {
     consentMutation.mutate(data);
   };
@@ -323,6 +342,10 @@ export default function PatientDashboard() {
                   onSubmit={handleUpload}
                   isLoading={uploadMutation.isPending}
                   onCancel={() => setShowUploader(false)}
+                  patientId={user?.id}
+                  onUploadSuccess={handleUploadSuccess}
+                  onUploadError={handleUploadError}
+                  enableRAGProcessing={true}
                 />
               </div>
             )}

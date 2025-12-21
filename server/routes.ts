@@ -7,6 +7,25 @@ import {
   patientLoginSchema,
   doctorLoginSchema,
 } from "@shared/schema";
+import multer from "multer";
+import FormData from "form-data";
+import fetch from "node-fetch";
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
+
+// Flask RAG API URL
+const FLASK_API_URL = process.env.FLASK_API_URL || "http://localhost:8004";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -155,6 +174,139 @@ export async function registerRoutes(
       res.status(201).json(report);
     } catch (error) {
       console.error("Create report error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Upload PDF report with AI processing
+  app.post("/api/patients/:patientId/reports/upload", upload.single("file"), async (req, res) => {
+    try {
+      const { patientId } = req.params;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const patient = await storage.getPatient(patientId);
+      if (!patient) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+
+      console.log(`Processing file upload for patient ${patientId}: ${file.originalname}`);
+
+      // Create FormData for Flask API
+      const formData = new FormData();
+      formData.append("file", file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+
+      // Call Flask RAG API for processing
+      let aiResponse = null;
+      try {
+        const flaskResponse = await fetch(`${FLASK_API_URL}/api/report/summary`, {
+          method: "POST",
+          body: formData,
+          headers: formData.getHeaders(),
+        });
+
+        if (flaskResponse.ok) {
+          aiResponse = await flaskResponse.json() as {
+            success: boolean;
+            summary?: string;
+            extracted_info?: {
+              diagnosis?: string;
+              key_findings?: string;
+              recommendations?: string;
+              test_results?: any[];
+              report_type?: string;
+            };
+            file_name?: string;
+          };
+          console.log("AI processing successful:", aiResponse.success);
+        } else {
+          console.error("Flask API error:", await flaskResponse.text());
+        }
+      } catch (flaskError) {
+        console.error("Error calling Flask API:", flaskError);
+        // Continue without AI processing
+      }
+
+      // Create report with or without AI data
+      const report = await storage.createReport({
+        patientId,
+        diseaseName: aiResponse?.extracted_info?.report_type || req.body.diseaseName || "Medical Report",
+        attributes: JSON.stringify(aiResponse?.extracted_info?.test_results || []),
+        measurementDate: new Date().toISOString().split("T")[0],
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        status: "pending",
+        uploadedAt: new Date().toISOString(),
+        aiSummary: aiResponse?.summary || null,
+        aiDiagnosis: aiResponse?.extracted_info?.diagnosis || null,
+        aiKeyFindings: aiResponse?.extracted_info?.key_findings || null,
+        aiRecommendations: aiResponse?.extracted_info?.recommendations || null,
+        aiTestResults: aiResponse?.extracted_info?.test_results 
+          ? JSON.stringify(aiResponse.extracted_info.test_results) 
+          : null,
+        ragReportId: null, // Can be set if using RAG chat
+        processedByAi: !!aiResponse?.success,
+      });
+
+      res.status(201).json({
+        success: true,
+        report,
+        aiProcessed: !!aiResponse?.success,
+        message: aiResponse?.success 
+          ? "Report uploaded and processed with AI" 
+          : "Report uploaded (AI processing pending)",
+      });
+    } catch (error) {
+      console.error("File upload error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Reprocess existing report with AI
+  app.post("/api/reports/:reportId/process-ai", async (req, res) => {
+    try {
+      const { reportId } = req.params;
+      const report = await storage.getReport(reportId);
+
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      // If we have file content stored or can retrieve it, process with AI
+      // For now, return current AI data
+      res.json({
+        success: true,
+        report,
+        aiSummary: report.aiSummary,
+        aiDiagnosis: report.aiDiagnosis,
+        aiKeyFindings: report.aiKeyFindings,
+        aiRecommendations: report.aiRecommendations,
+      });
+    } catch (error) {
+      console.error("AI processing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get single report by ID (for viewing full details including AI summary)
+  app.get("/api/reports/:reportId", async (req, res) => {
+    try {
+      const { reportId } = req.params;
+      const report = await storage.getReport(reportId);
+
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error("Get report error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
