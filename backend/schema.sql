@@ -100,6 +100,74 @@ FROM medical_reports mr
 LEFT JOIN test_results tr ON mr.report_id = tr.report_id
 GROUP BY mr.id;
 
+-- =========================================
+-- USER AUTHENTICATION TABLES
+-- =========================================
+
+-- Patients table for login and registration
+CREATE TABLE IF NOT EXISTS patients (
+    id VARCHAR(36) PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    phone VARCHAR(10) NOT NULL,
+    date_of_birth DATE NOT NULL,
+    pin VARCHAR(255) NOT NULL,  -- Hashed PIN for security
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    INDEX idx_patient_email (email),
+    INDEX idx_patient_phone (phone)
+);
+
+-- Doctors table for login and registration
+CREATE TABLE IF NOT EXISTS doctors (
+    id VARCHAR(36) PRIMARY KEY,
+    license_id VARCHAR(50) NOT NULL UNIQUE,
+    full_name VARCHAR(200) NOT NULL,
+    specialization VARCHAR(100) NOT NULL,
+    password VARCHAR(255) NOT NULL,  -- Hashed password for security
+    verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    INDEX idx_doctor_license (license_id),
+    INDEX idx_doctor_specialization (specialization)
+);
+
+-- Consents table (patient grants access to doctor)
+CREATE TABLE IF NOT EXISTS consents (
+    id VARCHAR(36) PRIMARY KEY,
+    patient_id VARCHAR(36) NOT NULL,
+    doctor_id VARCHAR(36) NOT NULL,
+    permissions JSON NOT NULL,  -- Array: ["READ", "WRITE", "SHARE"]
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+    INDEX idx_consent_patient (patient_id),
+    INDEX idx_consent_doctor (doctor_id)
+);
+
+-- Doctor-Patient assignments table
+CREATE TABLE IF NOT EXISTS assignments (
+    id VARCHAR(36) PRIMARY KEY,
+    doctor_id VARCHAR(36) NOT NULL,
+    patient_id VARCHAR(36) NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+    INDEX idx_assignment_doctor (doctor_id),
+    INDEX idx_assignment_patient (patient_id),
+    UNIQUE KEY unique_doctor_patient (doctor_id, patient_id)
+);
+
 -- Sample queries for reference:
 
 -- Get all reports for a patient
@@ -113,3 +181,14 @@ GROUP BY mr.id;
 
 -- Get query history for a report
 -- SELECT * FROM query_history WHERE report_id = 'RPT-001' ORDER BY query_time DESC;
+
+-- Get all patients assigned to a doctor
+-- SELECT p.* FROM patients p 
+-- JOIN assignments a ON p.id = a.patient_id 
+-- WHERE a.doctor_id = 'doc-001';
+
+-- Get patient login (verify PIN)
+-- SELECT * FROM patients WHERE email = 'john@example.com';
+
+-- Get doctor login (verify password)
+-- SELECT * FROM doctors WHERE license_id = 'MED-12345';

@@ -64,7 +64,10 @@ export default function DoctorLogin() {
         description: "Successfully logged in to your dashboard",
       });
 
-      setLocation("/doctor/dashboard");
+      // Small delay to ensure auth state is propagated before redirect
+      setTimeout(() => {
+        setLocation("/doctor/dashboard");
+      }, 100);
     } catch (error) {
       toast({
         title: "Login Failed",

@@ -98,7 +98,10 @@ export default function PatientLogin() {
         description: "Successfully logged in to your account",
       });
 
-      setLocation("/patient/dashboard");
+      // Small delay to ensure auth state is propagated before redirect
+      setTimeout(() => {
+        setLocation("/patient/dashboard");
+      }, 100);
     } catch (error) {
       toast({
         title: "Login Failed",

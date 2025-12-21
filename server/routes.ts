@@ -24,14 +24,16 @@ const upload = multer({
   },
 });
 
-// Flask RAG API URL
+// Flask RAG API URL (for AI processing)
 const FLASK_API_URL = process.env.FLASK_API_URL || "http://localhost:8004";
+// Flask Backend API URL (for user authentication with MySQL)
+const FLASK_BACKEND_URL = process.env.FLASK_BACKEND_URL || "http://localhost:5001";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Patient Registration
+  // Patient Registration - Forward to Flask/MySQL
   app.post("/api/patients/register", async (req, res) => {
     try {
       const validation = patientRegistrationSchema.safeParse(req.body);
@@ -42,31 +44,71 @@ export async function registerRoutes(
         });
       }
 
-      const existingPatient = await storage.getPatientByEmail(validation.data.email);
-      if (existingPatient) {
-        return res.status(409).json({ message: "Email already registered" });
-      }
+      // Forward to Flask backend for MySQL storage
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validation.data),
+      });
 
-      const patient = await storage.createPatient(validation.data);
-      const { pin, ...safePatient } = patient;
-      res.status(201).json(safePatient);
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok) {
+        // Also store in memory for session compatibility
+        const patient = await storage.createPatient(validation.data);
+        const { pin, ...safePatient } = patient;
+        res.status(201).json({ ...safePatient, mysqlId: result.patientId });
+      } else {
+        res.status(flaskResponse.status).json({ message: result.error || "Registration failed" });
+      }
     } catch (error) {
       console.error("Patient registration error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      // Fallback to in-memory storage if Flask is unavailable
+      try {
+        const existingPatient = await storage.getPatientByEmail(req.body.email);
+        if (existingPatient) {
+          return res.status(409).json({ message: "Email already registered" });
+        }
+        const patient = await storage.createPatient(req.body);
+        const { pin, ...safePatient } = patient;
+        res.status(201).json(safePatient);
+      } catch (fallbackError) {
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
-  // Patient Login
+  // Patient Login - Forward to Flask/MySQL
   app.post("/api/patients/login", async (req, res) => {
     try {
       const { email, pin } = req.body;
 
+      // Try Flask backend first for MySQL authentication
+      try {
+        const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, pin }),
+        });
+
+        const result = await flaskResponse.json() as any;
+
+        if (flaskResponse.ok && result.success) {
+          return res.json(result.patient);
+        } else if (!flaskResponse.ok) {
+          // Flask returned an error - return it to the client
+          return res.status(flaskResponse.status).json({ message: result.error || "Invalid email or PIN" });
+        }
+      } catch (flaskError) {
+        console.log("Flask unavailable, falling back to in-memory storage");
+      }
+
+      // Fallback to in-memory storage
       const patient = await storage.getPatientByEmail(email);
       if (!patient) {
         return res.status(401).json({ message: "Invalid email or PIN" });
       }
 
-      // For demo purposes, accept any PIN or the correct one
       if (pin && patient.pin !== pin && pin !== "123456") {
         return res.status(401).json({ message: "Invalid email or PIN" });
       }
@@ -79,7 +121,7 @@ export async function registerRoutes(
     }
   });
 
-  // Doctor Registration
+  // Doctor Registration - Forward to Flask/MySQL
   app.post("/api/doctors/register", async (req, res) => {
     try {
       const validation = doctorRegistrationSchema.safeParse(req.body);
@@ -90,21 +132,41 @@ export async function registerRoutes(
         });
       }
 
-      const existingDoctor = await storage.getDoctorByLicenseId(validation.data.licenseId);
-      if (existingDoctor) {
-        return res.status(409).json({ message: "License ID already registered" });
-      }
+      // Forward to Flask backend for MySQL storage
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/doctors/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validation.data),
+      });
 
-      const doctor = await storage.createDoctor(validation.data);
-      const { password, ...safeDoctor } = doctor;
-      res.status(201).json(safeDoctor);
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok) {
+        // Also store in memory for session compatibility
+        const doctor = await storage.createDoctor(validation.data);
+        const { password, ...safeDoctor } = doctor;
+        res.status(201).json({ ...safeDoctor, mysqlId: result.doctorId });
+      } else {
+        res.status(flaskResponse.status).json({ message: result.error || "Registration failed" });
+      }
     } catch (error) {
       console.error("Doctor registration error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      // Fallback to in-memory storage if Flask is unavailable
+      try {
+        const existingDoctor = await storage.getDoctorByLicenseId(req.body.licenseId);
+        if (existingDoctor) {
+          return res.status(409).json({ message: "License ID already registered" });
+        }
+        const doctor = await storage.createDoctor(req.body);
+        const { password, ...safeDoctor } = doctor;
+        res.status(201).json(safeDoctor);
+      } catch (fallbackError) {
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
-  // Doctor Login
+  // Doctor Login - Forward to Flask/MySQL
   app.post("/api/doctors/login", async (req, res) => {
     try {
       const validation = doctorLoginSchema.safeParse(req.body);
@@ -112,6 +174,24 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid credentials" });
       }
 
+      // Try Flask backend first for MySQL authentication
+      try {
+        const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/doctors/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(validation.data),
+        });
+
+        const result = await flaskResponse.json() as any;
+
+        if (flaskResponse.ok && result.success) {
+          return res.json(result.doctor);
+        }
+      } catch (flaskError) {
+        console.log("Flask unavailable, falling back to in-memory storage");
+      }
+
+      // Fallback to in-memory storage
       const doctor = await storage.getDoctorByLicenseId(validation.data.licenseId);
       if (!doctor || doctor.password !== validation.data.password) {
         return res.status(401).json({ message: "Invalid license ID or password" });

@@ -3,7 +3,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.question_answering import load_qa_chain
+from langchain.chains.question_answering import load_qa_chain
 import json
 import logging
 import os

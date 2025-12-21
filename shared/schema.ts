@@ -89,16 +89,21 @@ export const patientRegistrationSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters").regex(/^[a-zA-Z\s]+$/, "Only letters allowed"),
   lastName: z.string().min(2, "Last name must be at least 2 characters").regex(/^[a-zA-Z\s]+$/, "Only letters allowed"),
   email: z.string().email("Invalid email address"),
-  phone: z.string().regex(/^\+?[1-9]\d{9,14}$/, "Invalid phone number"),
+  phone: z.string().regex(/^\d{10}$/, "Phone number must be exactly 10 digits"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   pin: z.string().length(6, "PIN must be exactly 6 digits").regex(/^\d{6}$/, "PIN must be 6 digits"),
 });
+
+// Password validation: at least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special character
+const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
 export const doctorRegistrationSchema = z.object({
   licenseId: z.string().min(5, "License ID must be at least 5 characters"),
   fullName: z.string().min(3, "Full name must be at least 3 characters"),
   specialization: z.string().min(1, "Specialization is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(strongPasswordRegex, "Password must contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character (@$!%*?&)"),
   verified: z.boolean().optional(),
 });
 

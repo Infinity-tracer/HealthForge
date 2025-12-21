@@ -43,10 +43,12 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Import routes
 from routes.reports import reports_bp
 from routes.chat import chat_bp
+from routes.users import users_bp
 
 # Register blueprints
 app.register_blueprint(reports_bp, url_prefix='/api/reports')
 app.register_blueprint(chat_bp, url_prefix='/api/chat')
+app.register_blueprint(users_bp)  # User routes handle their own URL prefixes
 
 @app.before_request
 def log_request():
@@ -74,6 +76,6 @@ def health_check():
 if __name__ == '__main__':
     app.run(
         host='0.0.0.0',
-        port=5000,
+        port=5001,
         debug=os.getenv('FLASK_ENV') == 'development'
     )
