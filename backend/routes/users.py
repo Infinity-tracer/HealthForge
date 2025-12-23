@@ -512,3 +512,272 @@ def verify_doctor_account(doctor_id):
             'success': False,
             'error': 'Internal server error'
         }), 500
+
+
+# ==================== FINGERPRINT/BIOMETRIC ROUTES ====================
+
+@users_bp.route('/api/patients/fingerprint/register', methods=['POST'])
+def register_fingerprint():
+    """
+    Register WebAuthn fingerprint credential for a patient
+    
+    Expected JSON body:
+    {
+        "email": "patient@example.com",
+        "credentialId": "base64-encoded-credential-id",
+        "publicKey": "base64-encoded-public-key"
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        email = data.get('email')
+        credential_id = data.get('credentialId')
+        public_key = data.get('publicKey')
+        
+        if not email or not credential_id or not public_key:
+            return jsonify({
+                'success': False,
+                'error': 'Email, credentialId, and publicKey are required'
+            }), 400
+        
+        user_db = UserDB()
+        
+        # Check if patient exists
+        if not user_db.patient_exists(email):
+            user_db.close()
+            return jsonify({
+                'success': False,
+                'error': 'Patient not found'
+            }), 404
+        
+        # Register fingerprint
+        success = user_db.register_fingerprint(email, credential_id, public_key)
+        user_db.close()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Fingerprint registered successfully'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to register fingerprint'
+            }), 500
+            
+    except Exception as e:
+        print(f"Error registering fingerprint: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@users_bp.route('/api/patients/fingerprint/challenge', methods=['POST'])
+def get_fingerprint_challenge():
+    """
+    Generate a WebAuthn challenge for fingerprint authentication
+    
+    Expected JSON body:
+    {
+        "email": "patient@example.com"
+    }
+    """
+    try:
+        import base64
+        import secrets
+        
+        data = request.get_json()
+        email = data.get('email')
+        
+        if not email:
+            return jsonify({
+                'success': False,
+                'error': 'Email is required'
+            }), 400
+        
+        user_db = UserDB()
+        
+        # Check if patient has fingerprint registered
+        credential = user_db.get_fingerprint_credential(email)
+        user_db.close()
+        
+        if not credential:
+            return jsonify({
+                'success': False,
+                'error': 'No fingerprint registered for this account',
+                'fingerprintRegistered': False
+            }), 404
+        
+        # Generate a random challenge
+        challenge = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+        
+        return jsonify({
+            'success': True,
+            'challenge': challenge,
+            'credentialId': credential['credential_id'],
+            'fingerprintRegistered': True
+        }), 200
+        
+    except Exception as e:
+        print(f"Error generating fingerprint challenge: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@users_bp.route('/api/patients/fingerprint/verify', methods=['POST'])
+def verify_fingerprint():
+    """
+    Verify WebAuthn fingerprint authentication
+    
+    Expected JSON body:
+    {
+        "email": "patient@example.com",
+        "credentialId": "base64-encoded-credential-id",
+        "authenticatorData": "base64-encoded-authenticator-data",
+        "signature": "base64-encoded-signature",
+        "clientDataJSON": "base64-encoded-client-data"
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        email = data.get('email')
+        credential_id = data.get('credentialId')
+        
+        if not email or not credential_id:
+            return jsonify({
+                'success': False,
+                'error': 'Email and credentialId are required'
+            }), 400
+        
+        user_db = UserDB()
+        
+        # Verify the credential ID matches the stored one
+        patient = user_db.verify_fingerprint_credential(email, credential_id)
+        user_db.close()
+        
+        if patient:
+            # Convert date objects to strings for JSON serialization
+            if patient.get('date_of_birth'):
+                patient['date_of_birth'] = str(patient['date_of_birth'])
+            
+            return jsonify({
+                'success': True,
+                'message': 'Fingerprint verified successfully',
+                'patient': {
+                    'id': patient['id'],
+                    'firstName': patient['first_name'],
+                    'lastName': patient['last_name'],
+                    'email': patient['email'],
+                    'phone': patient['phone'],
+                    'dateOfBirth': patient['date_of_birth']
+                }
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Fingerprint verification failed'
+            }), 401
+            
+    except Exception as e:
+        print(f"Error verifying fingerprint: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@users_bp.route('/api/patients/fingerprint/status/<email>', methods=['GET'])
+def get_fingerprint_status(email):
+    """Check if a patient has fingerprint registered"""
+    try:
+        user_db = UserDB()
+        has_fingerprint = user_db.has_fingerprint_registered(email)
+        user_db.close()
+        
+        return jsonify({
+            'success': True,
+            'fingerprintRegistered': has_fingerprint
+        }), 200
+        
+    except Exception as e:
+        print(f"Error checking fingerprint status: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@users_bp.route('/api/patients/fingerprint/registration-options', methods=['POST'])
+def get_registration_options():
+    """
+    Generate WebAuthn registration options for fingerprint enrollment
+    
+    Expected JSON body:
+    {
+        "email": "patient@example.com",
+        "firstName": "John",
+        "lastName": "Doe"
+    }
+    """
+    try:
+        import base64
+        import secrets
+        
+        data = request.get_json()
+        email = data.get('email')
+        first_name = data.get('firstName', '')
+        last_name = data.get('lastName', '')
+        
+        if not email:
+            return jsonify({
+                'success': False,
+                'error': 'Email is required'
+            }), 400
+        
+        # Generate a random challenge
+        challenge = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+        
+        # Generate a user ID based on email
+        user_id = base64.urlsafe_b64encode(email.encode()).decode('utf-8').rstrip('=')
+        
+        # WebAuthn registration options
+        options = {
+            'challenge': challenge,
+            'rp': {
+                'name': 'HealthVault',
+                'id': None  # Will be set by frontend based on current domain
+            },
+            'user': {
+                'id': user_id,
+                'name': email,
+                'displayName': f"{first_name} {last_name}".strip() or email
+            },
+            'pubKeyCredParams': [
+                {'type': 'public-key', 'alg': -7},   # ES256
+                {'type': 'public-key', 'alg': -257}  # RS256
+            ],
+            'authenticatorSelection': {
+                'authenticatorAttachment': 'platform',  # Use platform authenticator (fingerprint)
+                'userVerification': 'required',
+                'residentKey': 'preferred'
+            },
+            'timeout': 60000,
+            'attestation': 'none'
+        }
+        
+        return jsonify({
+            'success': True,
+            'options': options
+        }), 200
+        
+    except Exception as e:
+        print(f"Error generating registration options: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500

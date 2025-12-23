@@ -11,6 +11,9 @@ export const patients = pgTable("patients", {
   phone: text("phone").notNull(),
   dateOfBirth: text("date_of_birth").notNull(),
   pin: text("pin").notNull(),
+  fingerprintCredentialId: text("fingerprint_credential_id"),
+  fingerprintPublicKey: text("fingerprint_public_key"),
+  fingerprintRegistered: boolean("fingerprint_registered").default(false),
 });
 
 export const insertPatientSchema = createInsertSchema(patients).omit({ id: true });

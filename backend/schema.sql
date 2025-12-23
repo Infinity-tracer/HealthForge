@@ -113,6 +113,9 @@ CREATE TABLE IF NOT EXISTS patients (
     phone VARCHAR(10) NOT NULL,
     date_of_birth DATE NOT NULL,
     pin VARCHAR(255) NOT NULL,  -- Hashed PIN for security
+    fingerprint_credential_id TEXT,  -- WebAuthn credential ID (base64 encoded)
+    fingerprint_public_key TEXT,     -- WebAuthn public key (base64 encoded)
+    fingerprint_registered BOOLEAN DEFAULT FALSE,  -- Whether fingerprint is registered
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,

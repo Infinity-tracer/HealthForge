@@ -136,6 +136,110 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== FINGERPRINT/BIOMETRIC ROUTES ====================
+
+  // Get fingerprint registration options
+  app.post("/api/patients/fingerprint/registration-options", async (req, res) => {
+    try {
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/fingerprint/registration-options`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+
+      const result = await flaskResponse.json() as any;
+      res.status(flaskResponse.status).json(result);
+    } catch (error) {
+      console.error("Fingerprint registration options error:", error);
+      res.status(500).json({ success: false, error: "Service unavailable" });
+    }
+  });
+
+  // Register fingerprint credential
+  app.post("/api/patients/fingerprint/register", async (req, res) => {
+    try {
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/fingerprint/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+
+      const result = await flaskResponse.json() as any;
+      res.status(flaskResponse.status).json(result);
+    } catch (error) {
+      console.error("Fingerprint registration error:", error);
+      res.status(500).json({ success: false, error: "Service unavailable" });
+    }
+  });
+
+  // Get fingerprint challenge for authentication
+  app.post("/api/patients/fingerprint/challenge", async (req, res) => {
+    try {
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/fingerprint/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+
+      const result = await flaskResponse.json() as any;
+      res.status(flaskResponse.status).json(result);
+    } catch (error) {
+      console.error("Fingerprint challenge error:", error);
+      res.status(500).json({ success: false, error: "Service unavailable" });
+    }
+  });
+
+  // Verify fingerprint authentication
+  app.post("/api/patients/fingerprint/verify", async (req, res) => {
+    try {
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/fingerprint/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+
+      const result = await flaskResponse.json() as any;
+      
+      if (flaskResponse.ok && result.success && result.patient) {
+        // Sync patient to in-memory storage
+        const patientData = result.patient;
+        const existingPatient = await storage.getPatient(patientData.id);
+        if (!existingPatient) {
+          await storage.syncPatientFromMySQL({
+            id: patientData.id,
+            firstName: patientData.firstName,
+            lastName: patientData.lastName,
+            email: patientData.email,
+            phone: patientData.phone,
+            dateOfBirth: patientData.dateOfBirth,
+            pin: "", // Not needed for fingerprint login
+          });
+        }
+      }
+      
+      res.status(flaskResponse.status).json(result);
+    } catch (error) {
+      console.error("Fingerprint verification error:", error);
+      res.status(500).json({ success: false, error: "Service unavailable" });
+    }
+  });
+
+  // Check fingerprint registration status
+  app.get("/api/patients/fingerprint/status/:email", async (req, res) => {
+    try {
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/fingerprint/status/${encodeURIComponent(req.params.email)}`, {
+        method: "GET",
+      });
+
+      const result = await flaskResponse.json() as any;
+      res.status(flaskResponse.status).json(result);
+    } catch (error) {
+      console.error("Fingerprint status check error:", error);
+      // Return false if service unavailable
+      res.json({ success: true, fingerprintRegistered: false });
+    }
+  });
+
   // Doctor Registration - Forward to Flask/MySQL
   app.post("/api/doctors/register", async (req, res) => {
     try {

@@ -629,6 +629,139 @@ class UserDB:
             if cursor:
                 cursor.close()
     
+    # ==================== FINGERPRINT OPERATIONS ====================
+    
+    def register_fingerprint(self, email: str, credential_id: str, public_key: str) -> bool:
+        """
+        Register WebAuthn fingerprint credential for a patient
+        
+        Parameters:
+        - email: Patient's email address
+        - credential_id: Base64 encoded WebAuthn credential ID
+        - public_key: Base64 encoded WebAuthn public key
+        
+        Returns:
+        - True if successful, False otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                UPDATE patients 
+                SET fingerprint_credential_id = %s, 
+                    fingerprint_public_key = %s,
+                    fingerprint_registered = TRUE
+                WHERE email = %s AND is_active = TRUE
+            """
+            cursor.execute(query, (credential_id, public_key, email))
+            conn.commit()
+            
+            success = cursor.rowcount > 0
+            if success:
+                print(f"Fingerprint registered successfully for: {email}")
+            return success
+            
+        except Error as e:
+            print(f"Error registering fingerprint: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_fingerprint_credential(self, email: str) -> dict:
+        """
+        Get fingerprint credential for a patient
+        
+        Returns:
+        - Dictionary with credential_id and public_key if found, None otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT id, fingerprint_credential_id, fingerprint_public_key, fingerprint_registered
+                FROM patients 
+                WHERE email = %s AND is_active = TRUE AND fingerprint_registered = TRUE
+            """
+            cursor.execute(query, (email,))
+            result = cursor.fetchone()
+            
+            if result and result.get('fingerprint_registered'):
+                return {
+                    'patient_id': result['id'],
+                    'credential_id': result['fingerprint_credential_id'],
+                    'public_key': result['fingerprint_public_key']
+                }
+            return None
+            
+        except Error as e:
+            print(f"Error getting fingerprint credential: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def verify_fingerprint_credential(self, email: str, credential_id: str) -> dict:
+        """
+        Verify fingerprint credential matches stored credential
+        
+        Returns:
+        - Patient data if credential matches, None otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT id, first_name, last_name, email, phone, date_of_birth, 
+                       fingerprint_credential_id, fingerprint_public_key
+                FROM patients 
+                WHERE email = %s AND fingerprint_credential_id = %s 
+                      AND fingerprint_registered = TRUE AND is_active = TRUE
+            """
+            cursor.execute(query, (email, credential_id))
+            result = cursor.fetchone()
+            
+            if result:
+                # Remove sensitive fingerprint data from response
+                result.pop('fingerprint_credential_id', None)
+                result.pop('fingerprint_public_key', None)
+                return result
+            
+            return None
+            
+        except Error as e:
+            print(f"Error verifying fingerprint: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def has_fingerprint_registered(self, email: str) -> bool:
+        """Check if patient has fingerprint registered"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT fingerprint_registered 
+                FROM patients 
+                WHERE email = %s AND is_active = TRUE
+            """
+            cursor.execute(query, (email,))
+            result = cursor.fetchone()
+            
+            return result and result.get('fingerprint_registered', False)
+            
+        except Error as e:
+            print(f"Error checking fingerprint registration: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
     def close(self):
         """Close the database connection"""
         self.db.disconnect()
