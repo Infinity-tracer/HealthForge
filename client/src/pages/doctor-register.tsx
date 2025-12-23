@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Activity, ArrowLeft, Stethoscope, User, Lock, Loader2, Check, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Footer } from "@/components/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -261,6 +262,7 @@ export default function DoctorRegister() {
           </CardContent>
         </Card>
       </main>
+      <Footer />
     </div>
   );
 }

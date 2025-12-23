@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Activity, ArrowLeft, User, Mail, Phone, Calendar, Lock, Loader2, Check, Fingerprint, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Footer } from "@/components/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -409,6 +410,7 @@ export default function PatientRegister() {
           </Card>
         )}
       </main>
+      <Footer />
     </div>
   );
 }

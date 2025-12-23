@@ -3,6 +3,7 @@ import { Shield, Fingerprint, Activity, Users, ArrowRight, Lock, FileText } from
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Footer } from "@/components/footer";
 
 const features = [
   {
@@ -150,17 +151,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="py-8 px-4 border-t">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-primary" />
-            <span className="font-semibold">HealthVault</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Secure Health Records Management System
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

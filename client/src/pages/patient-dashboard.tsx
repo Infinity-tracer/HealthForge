@@ -13,6 +13,7 @@ import {
   Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -223,18 +224,19 @@ export default function PatientDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <aside className="hidden lg:flex w-64 border-r bg-sidebar flex-col">
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            <Activity className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg">HealthVault</span>
+    <div className="min-h-screen bg-background flex flex-col">
+      <div className="flex flex-1">
+        <aside className="hidden lg:flex w-64 border-r bg-sidebar flex-col">
+          <div className="p-4 border-b">
+            <div className="flex items-center gap-2">
+              <Activity className="w-6 h-6 text-primary" />
+              <span className="font-bold text-lg">HealthVault</span>
+            </div>
           </div>
-        </div>
-        <SidebarContent patient={patient} onLogout={handleLogout} />
-      </aside>
+          <SidebarContent patient={patient} onLogout={handleLogout} />
+        </aside>
 
-      <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col">
         <header className="flex items-center justify-between gap-4 p-4 border-b bg-background sticky top-0 z-50">
           <div className="flex items-center gap-3">
             <Sheet>
@@ -494,6 +496,7 @@ export default function PatientDashboard() {
           </div>
         </main>
       </div>
+      </div>
 
       <ConsentModal
         isOpen={showConsentModal}
@@ -502,6 +505,7 @@ export default function PatientDashboard() {
         doctors={doctors}
         isLoading={consentMutation.isPending}
       />
+      <Footer />
     </div>
   );
 }

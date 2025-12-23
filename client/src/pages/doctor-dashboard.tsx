@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Footer } from "@/components/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -169,7 +170,8 @@ export default function DoctorDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex flex-col">
+      <div className="flex flex-1">
       <aside className="hidden lg:flex w-64 border-r bg-sidebar flex-col">
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
@@ -425,6 +427,7 @@ export default function DoctorDashboard() {
           </div>
         </main>
       </div>
+      </div>
 
       <Dialog open={!!selectedPatient} onOpenChange={() => setSelectedPatient(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
@@ -465,6 +468,7 @@ export default function DoctorDashboard() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+      <Footer />
     </div>
   );
 }
