@@ -90,7 +90,7 @@ export default function DoctorLogin() {
           </Button>
         </Link>
         <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-primary" />
+          <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
           <span className="font-semibold">HealthVault</span>
         </div>
         <ThemeToggle />

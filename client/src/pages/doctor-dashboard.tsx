@@ -175,7 +175,7 @@ export default function DoctorDashboard() {
       <aside className="hidden lg:flex w-64 border-r bg-sidebar flex-col">
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
-            <Activity className="w-6 h-6 text-primary" />
+            <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
             <span className="font-bold text-lg">HealthVault</span>
           </div>
         </div>
@@ -194,7 +194,7 @@ export default function DoctorDashboard() {
               <SheetContent side="left" className="w-64 p-0">
                 <div className="p-4 border-b">
                   <div className="flex items-center gap-2">
-                    <Activity className="w-6 h-6 text-primary" />
+                    <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
                     <span className="font-bold">HealthVault</span>
                   </div>
                 </div>

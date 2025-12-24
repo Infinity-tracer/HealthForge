@@ -732,6 +732,10 @@ export async function registerRoutes(
       
       const patientsWithReports = await Promise.all(
         assignments.map(async (assignment) => {
+          // Check if there's an active consent for this doctor-patient pair
+          const activeConsent = await storage.getActiveConsentForDoctorPatient(doctorId, assignment.patientId);
+          if (!activeConsent) return null; // Skip patients with revoked consent
+          
           const patient = await storage.getPatient(assignment.patientId);
           if (!patient) return null;
           

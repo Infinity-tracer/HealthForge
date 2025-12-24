@@ -37,8 +37,8 @@ export default function Landing() {
         
         <header className="relative z-10 flex items-center justify-between gap-4 p-4 md:p-6">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/20 backdrop-blur-sm">
-              <Activity className="w-6 h-6 text-primary" />
+            <div className="p-1 rounded-full bg-white/90 backdrop-blur-sm">
+              <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
             </div>
             <span className="text-xl font-bold text-white">HealthVault</span>
           </div>

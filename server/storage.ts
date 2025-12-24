@@ -53,6 +53,7 @@ export interface IStorage {
   getConsent(id: string): Promise<Consent | undefined>;
   getConsentsByPatientId(patientId: string): Promise<Consent[]>;
   getConsentsByDoctorId(doctorId: string): Promise<Consent[]>;
+  getActiveConsentForDoctorPatient(doctorId: string, patientId: string): Promise<Consent | undefined>;
   createConsent(consent: InsertConsent): Promise<Consent>;
   revokeConsent(id: string): Promise<Consent | undefined>;
 
@@ -354,6 +355,12 @@ export class MemStorage implements IStorage {
 
   async getConsentsByDoctorId(doctorId: string): Promise<Consent[]> {
     return Array.from(this.consents.values()).filter((c) => c.doctorId === doctorId);
+  }
+
+  async getActiveConsentForDoctorPatient(doctorId: string, patientId: string): Promise<Consent | undefined> {
+    return Array.from(this.consents.values()).find(
+      (c) => c.doctorId === doctorId && c.patientId === patientId && c.active === true
+    );
   }
 
   async createConsent(insertConsent: InsertConsent): Promise<Consent> {

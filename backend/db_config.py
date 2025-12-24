@@ -1189,15 +1189,17 @@ class PatientReportDB:
                 cursor.close()
     
     def get_assignments_by_doctor_id(self, doctor_id: str) -> list:
-        """Get all patients assigned to a doctor"""
+        """Get all patients assigned to a doctor with active consent only"""
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
             
+            # Only return assignments where there is an active consent
             query = """
                 SELECT a.*, p.first_name, p.last_name, p.email, p.phone, p.date_of_birth
                 FROM assignments a
                 LEFT JOIN patients p ON a.patient_id = p.id
+                INNER JOIN consents c ON c.doctor_id = a.doctor_id AND c.patient_id = a.patient_id AND c.active = TRUE
                 WHERE a.doctor_id = %s
                 ORDER BY a.assigned_at DESC
             """

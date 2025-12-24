@@ -16,8 +16,6 @@ export function Footer() {
           © Designed and Developed by{" "}
           <span className="text-cyan-400 font-medium">VIJAYKUMAR BK</span>,{" "}
           <span className="text-cyan-400 font-medium">SRIRAM VELUMURI</span>{" "}
-          under guidance of{" "}
-          <span className="text-cyan-400 font-medium">Dr. M.N Vijayalakshmi</span>
         </p>
       </div>
     </footer>
