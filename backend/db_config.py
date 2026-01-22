@@ -1013,6 +1013,46 @@ class UserDB:
             if cursor:
                 cursor.close()
     
+    def delete_doctor(self, doctor_id: str) -> bool:
+        """
+        Delete a doctor account and all related data
+        
+        Parameters:
+        - doctor_id: The doctor's unique ID
+        
+        Returns:
+        - True if deleted successfully, False otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Delete related data first (foreign key constraints)
+            # Delete from consents where this doctor is involved
+            cursor.execute("DELETE FROM consents WHERE doctor_id = %s", (doctor_id,))
+            
+            # Delete from assignments where this doctor is involved  
+            cursor.execute("DELETE FROM assignments WHERE doctor_id = %s", (doctor_id,))
+            
+            # Finally delete the doctor
+            cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
+            
+            conn.commit()
+            
+            deleted = cursor.rowcount > 0
+            if deleted:
+                print(f"Doctor account deleted: {doctor_id}")
+            
+            return deleted
+            
+        except Error as e:
+            print(f"Error deleting doctor: {e}")
+            conn.rollback()
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
     def close(self):
         """Close the database connection"""
         self.db.disconnect()

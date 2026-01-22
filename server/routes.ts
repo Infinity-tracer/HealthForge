@@ -900,5 +900,30 @@ export async function registerRoutes(
     }
   });
 
+  // Delete doctor account
+  app.delete("/api/doctors/:doctorId", async (req, res) => {
+    try {
+      const { doctorId } = req.params;
+
+      // Forward to Flask backend
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/doctors/${doctorId}`, {
+        method: "DELETE",
+      });
+
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok && result.success) {
+        // Also delete from in-memory storage
+        await storage.deleteDoctor(doctorId);
+        return res.json({ success: true, message: "Account deleted successfully" });
+      } else {
+        res.status(flaskResponse.status).json({ message: result.error || "Failed to delete account" });
+      }
+    } catch (error) {
+      console.error("Delete doctor error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

@@ -730,6 +730,51 @@ def get_all_doctors():
         }), 500
 
 
+@users_bp.route('/api/doctors/<doctor_id>', methods=['DELETE'])
+def delete_doctor_account(doctor_id):
+    """
+    Delete a doctor account and all related data
+    
+    This will permanently delete:
+    - Doctor profile
+    - All consents granted by patients
+    - All patient assignments
+    """
+    try:
+        user_db = UserDB()
+        
+        # Verify doctor exists
+        doctor = user_db.get_doctor_by_id(doctor_id)
+        if not doctor:
+            user_db.close()
+            return jsonify({
+                'success': False,
+                'error': 'Doctor not found'
+            }), 404
+        
+        # Delete doctor and all related data
+        success = user_db.delete_doctor(doctor_id)
+        user_db.close()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Account deleted successfully'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to delete account'
+            }), 500
+            
+    except Exception as e:
+        print(f"Error deleting doctor account: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
 @users_bp.route('/api/doctors/<doctor_id>', methods=['GET'])
 def get_doctor(doctor_id):
     """Get a specific doctor by ID"""
