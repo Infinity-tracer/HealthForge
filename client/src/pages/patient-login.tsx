@@ -190,9 +190,9 @@ export default function PatientLogin() {
             Back
           </Button>
         </Link>
-        <div className="flex items-center gap-2">
-          <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
-          <span className="font-semibold">HealthVault</span>
+        <div className="flex items-center gap-3">
+          <img src="/college-logo.png" alt="College Logo" className="w-12 h-12 object-contain" />
+          <span className="font-semibold text-lg">HealthVault</span>
         </div>
         <ThemeToggle />
       </header>

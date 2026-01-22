@@ -174,8 +174,8 @@ export default function DoctorDashboard() {
       <div className="flex flex-1">
       <aside className="hidden lg:flex w-64 border-r bg-sidebar flex-col">
         <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
+          <div className="flex items-center gap-3">
+            <img src="/college-logo.png" alt="College Logo" className="w-12 h-12 object-contain" />
             <span className="font-bold text-lg">HealthVault</span>
           </div>
         </div>
@@ -193,8 +193,8 @@ export default function DoctorDashboard() {
               </SheetTrigger>
               <SheetContent side="left" className="w-64 p-0">
                 <div className="p-4 border-b">
-                  <div className="flex items-center gap-2">
-                    <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
+                  <div className="flex items-center gap-3">
+                    <img src="/college-logo.png" alt="College Logo" className="w-12 h-12 object-contain" />
                     <span className="font-bold">HealthVault</span>
                   </div>
                 </div>

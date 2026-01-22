@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Activity, ArrowLeft, User, Mail, Phone, Calendar, Lock, Loader2, Check, Fingerprint, ArrowRight } from "lucide-react";
+import { Activity, ArrowLeft, User, Mail, Phone, Calendar, Lock, Loader2, Check, Fingerprint, ArrowRight, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Footer } from "@/components/footer";
@@ -35,11 +35,13 @@ export default function PatientRegister() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<"form" | "fingerprint">("form");
+  const [step, setStep] = useState<"form" | "verify-email" | "fingerprint">("form");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [registeredFirstName, setRegisteredFirstName] = useState("");
   const [registeredLastName, setRegisteredLastName] = useState("");
   const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [isResending, setIsResending] = useState(false);
   
   const { isSupported: isWebAuthnSupported, registerFingerprint, isLoading: isWebAuthnLoading } = useWebAuthn();
 
@@ -65,23 +67,33 @@ export default function PatientRegister() {
         body: JSON.stringify(data),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || "Registration failed");
+        throw new Error(result.message || result.error || "Registration failed");
       }
 
-      // Store data for fingerprint registration
+      // Store data for later steps
       setRegisteredEmail(data.email);
       setRegisteredFirstName(data.firstName);
       setRegisteredLastName(data.lastName);
 
-      toast({
-        title: "Account Created!",
-        description: "Now let's set up your fingerprint for secure login.",
-      });
+      if (result.requiresVerification) {
+        toast({
+          title: "Verification Email Sent!",
+          description: "Please check your email for the verification code.",
+        });
 
-      // Move to fingerprint registration step
-      setStep("fingerprint");
+        // Move to email verification step
+        setStep("verify-email");
+      } else {
+        // If verification is not required (shouldn't happen with new flow)
+        toast({
+          title: "Account Created!",
+          description: "Now let's set up your fingerprint for secure login.",
+        });
+        setStep("fingerprint");
+      }
     } catch (error) {
       toast({
         title: "Registration Failed",
@@ -90,6 +102,85 @@ export default function PatientRegister() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleVerifyEmail = async () => {
+    if (verificationCode.length !== 6) {
+      toast({
+        title: "Invalid Code",
+        description: "Please enter the 6-digit verification code",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/patients/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: registeredEmail,
+          code: verificationCode,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Verification failed");
+      }
+
+      toast({
+        title: "Email Verified!",
+        description: "Now let's set up your fingerprint for secure login.",
+      });
+
+      // Move to fingerprint registration step
+      setStep("fingerprint");
+    } catch (error) {
+      toast({
+        title: "Verification Failed",
+        description: error instanceof Error ? error.message : "Invalid or expired code",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setIsResending(true);
+
+    try {
+      const response = await fetch("/api/patients/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: registeredEmail }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to resend code");
+      }
+
+      toast({
+        title: "Code Resent!",
+        description: "A new verification code has been sent to your email.",
+      });
+      
+      setVerificationCode("");
+    } catch (error) {
+      toast({
+        title: "Failed to Resend",
+        description: error instanceof Error ? error.message : "Please try again later",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -142,9 +233,9 @@ export default function PatientRegister() {
             Back
           </Button>
         </Link>
-        <div className="flex items-center gap-2">
-          <img src="/college-logo.png" alt="College Logo" className="w-8 h-8 rounded-full object-cover" />
-          <span className="font-semibold">HealthVault</span>
+        <div className="flex items-center gap-3">
+          <img src="/college-logo.png" alt="College Logo" className="w-12 h-12 object-contain" />
+          <span className="font-semibold text-lg">HealthVault</span>
         </div>
         <ThemeToggle />
       </header>
@@ -324,12 +415,12 @@ export default function PatientRegister() {
                     {isLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Creating Account...
+                        Sending Verification...
                       </>
                     ) : (
                       <>
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        Continue to Fingerprint Setup
+                        <Mail className="w-4 h-4 mr-2" />
+                        Send Verification Code
                       </>
                     )}
                   </Button>
@@ -342,6 +433,94 @@ export default function PatientRegister() {
                   </div>
                 </form>
               </Form>
+            </CardContent>
+          </Card>
+        ) : step === "verify-email" ? (
+          <Card className="w-full max-w-md animate-fade-in-up">
+            <CardHeader className="text-center">
+              <div className="mx-auto p-3 rounded-full bg-green-500/10 w-fit mb-4">
+                <ShieldCheck className="w-8 h-8 text-green-500" />
+              </div>
+              <CardTitle className="text-2xl">Verify Your Email</CardTitle>
+              <CardDescription>
+                We've sent a 6-digit verification code to <strong>{registeredEmail}</strong>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex flex-col items-center gap-4">
+                  <InputOTP
+                    maxLength={6}
+                    value={verificationCode}
+                    onChange={setVerificationCode}
+                    data-testid="input-verification-code"
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                  <p className="text-xs text-muted-foreground">
+                    Enter the 6-digit code from your email
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleVerifyEmail}
+                  className="w-full"
+                  disabled={isLoading || verificationCode.length !== 6}
+                  data-testid="button-verify-email"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Verify Email
+                    </>
+                  )}
+                </Button>
+
+                <div className="text-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResendCode}
+                    disabled={isResending}
+                    className="text-muted-foreground"
+                  >
+                    {isResending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Resending...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Resend Code
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Didn't receive the email? Check your spam folder or resend.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="text-xs text-muted-foreground text-center">
+                  The verification code expires in 10 minutes.
+                  <br />
+                  Your email also contains your masked PIN for reference.
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : (

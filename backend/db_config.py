@@ -762,6 +762,257 @@ class UserDB:
             if cursor:
                 cursor.close()
     
+    # ==================== EMAIL VERIFICATION OPERATIONS ====================
+    
+    def create_email_verification(self, verification_data: dict) -> str:
+        """
+        Create a new email verification record
+        
+        Parameters:
+        - verification_data: Dictionary containing registration info and verification code
+        
+        Returns:
+        - verification_id if successful, None otherwise
+        """
+        try:
+            import hashlib
+            from datetime import datetime, timedelta
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            verification_id = str(uuid.uuid4())
+            
+            # Hash the PIN for security
+            hashed_pin = hashlib.sha256(verification_data.get('pin', '').encode()).hexdigest()
+            
+            # Set expiration time (10 minutes from now)
+            expires_at = datetime.now() + timedelta(minutes=10)
+            
+            # Delete any existing verification for this email
+            delete_query = "DELETE FROM email_verifications WHERE email = %s"
+            cursor.execute(delete_query, (verification_data.get('email'),))
+            
+            query = """
+                INSERT INTO email_verifications (
+                    id, email, verification_code, pin, first_name, last_name, 
+                    phone, date_of_birth, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                verification_id,
+                verification_data.get('email'),
+                verification_data.get('verification_code'),
+                hashed_pin,
+                verification_data.get('firstName'),
+                verification_data.get('lastName'),
+                verification_data.get('phone'),
+                verification_data.get('dateOfBirth'),
+                expires_at
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Email verification created with ID: {verification_id}")
+            return verification_id
+            
+        except Error as e:
+            print(f"Error creating email verification: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def verify_email_code(self, email: str, code: str) -> dict:
+        """
+        Verify the email verification code
+        
+        Parameters:
+        - email: User's email address
+        - code: 6-digit verification code
+        
+        Returns:
+        - Verification data if valid, None otherwise
+        """
+        try:
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT * FROM email_verifications 
+                WHERE email = %s AND verification_code = %s 
+                AND expires_at > %s AND verified = FALSE AND attempts < 5
+            """
+            cursor.execute(query, (email, code, datetime.now()))
+            result = cursor.fetchone()
+            
+            if result:
+                # Mark as verified
+                update_query = "UPDATE email_verifications SET verified = TRUE WHERE id = %s"
+                cursor.execute(update_query, (result['id'],))
+                conn.commit()
+                return result
+            else:
+                # Increment attempts
+                update_query = """
+                    UPDATE email_verifications SET attempts = attempts + 1 
+                    WHERE email = %s AND verified = FALSE
+                """
+                cursor.execute(update_query, (email,))
+                conn.commit()
+                return None
+            
+        except Error as e:
+            print(f"Error verifying email code: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_pending_verification(self, email: str) -> dict:
+        """
+        Get pending verification record for an email
+        
+        Returns:
+        - Verification data if exists and not expired, None otherwise
+        """
+        try:
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT * FROM email_verifications 
+                WHERE email = %s AND expires_at > %s AND verified = FALSE
+            """
+            cursor.execute(query, (email, datetime.now()))
+            result = cursor.fetchone()
+            
+            return result
+            
+        except Error as e:
+            print(f"Error getting pending verification: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def delete_verification(self, email: str):
+        """Delete verification record after successful registration"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = "DELETE FROM email_verifications WHERE email = %s"
+            cursor.execute(query, (email,))
+            conn.commit()
+            
+        except Error as e:
+            print(f"Error deleting verification: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def create_patient_from_verification(self, verification_data: dict) -> str:
+        """
+        Create patient from verified email data
+        
+        Parameters:
+        - verification_data: The verification record data
+        
+        Returns:
+        - patient_id if successful, None otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            patient_id = str(uuid.uuid4())
+            
+            query = """
+                INSERT INTO patients (
+                    id, first_name, last_name, email, phone, date_of_birth, pin
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                patient_id,
+                verification_data.get('first_name'),
+                verification_data.get('last_name'),
+                verification_data.get('email'),
+                verification_data.get('phone'),
+                verification_data.get('date_of_birth'),
+                verification_data.get('pin')  # Already hashed
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Patient registered successfully with ID: {patient_id}")
+            return patient_id
+            
+        except Error as e:
+            print(f"Error registering patient from verification: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def delete_patient(self, patient_id: str) -> bool:
+        """
+        Delete a patient account and all related data
+        
+        Parameters:
+        - patient_id: The patient's unique ID
+        
+        Returns:
+        - True if deleted successfully, False otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Delete related data first (foreign key constraints)
+            # Delete from patient_reports
+            cursor.execute("DELETE FROM patient_reports WHERE patient_id = %s", (patient_id,))
+            
+            # Delete from consents
+            cursor.execute("DELETE FROM consents WHERE patient_id = %s", (patient_id,))
+            
+            # Delete from assignments
+            cursor.execute("DELETE FROM assignments WHERE patient_id = %s", (patient_id,))
+            
+            # Delete email verifications by getting patient email first
+            cursor.execute("SELECT email FROM patients WHERE id = %s", (patient_id,))
+            result = cursor.fetchone()
+            if result:
+                email = result[0]
+                cursor.execute("DELETE FROM email_verifications WHERE email = %s", (email,))
+            
+            # Finally delete the patient
+            cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+            
+            conn.commit()
+            
+            deleted = cursor.rowcount > 0
+            if deleted:
+                print(f"Patient account deleted: {patient_id}")
+            
+            return deleted
+            
+        except Error as e:
+            print(f"Error deleting patient: {e}")
+            conn.rollback()
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
     def close(self):
         """Close the database connection"""
         self.db.disconnect()
@@ -981,6 +1232,37 @@ class PatientReportDB:
             
         except Error as e:
             print(f"Error updating report AI data: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def delete_report(self, report_id: str) -> bool:
+        """
+        Delete a patient report
+        
+        Parameters:
+        - report_id: The report's unique ID
+        
+        Returns:
+        - True if deleted successfully, False otherwise
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = "DELETE FROM patient_reports WHERE id = %s"
+            cursor.execute(query, (report_id,))
+            conn.commit()
+            
+            deleted = cursor.rowcount > 0
+            if deleted:
+                print(f"Report deleted: {report_id}")
+            
+            return deleted
+            
+        except Error as e:
+            print(f"Error deleting report: {e}")
             return False
         finally:
             if cursor:
@@ -1261,6 +1543,210 @@ class PatientReportDB:
         except Error as e:
             print(f"Error retrieving assignments: {e}")
             return []
+        finally:
+            if cursor:
+                cursor.close()
+    
+    # ==================== EMAIL VERIFICATION OPERATIONS ====================
+    
+    def create_email_verification(self, verification_data: dict) -> str:
+        """
+        Create a new email verification record
+        
+        Parameters:
+        - verification_data: Dictionary containing registration info and verification code
+        
+        Returns:
+        - verification_id if successful, None otherwise
+        """
+        try:
+            import uuid
+            import hashlib
+            from datetime import datetime, timedelta
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            verification_id = str(uuid.uuid4())
+            
+            # Hash the PIN for security
+            hashed_pin = hashlib.sha256(verification_data.get('pin', '').encode()).hexdigest()
+            
+            # Set expiration time (10 minutes from now)
+            expires_at = datetime.now() + timedelta(minutes=10)
+            
+            # Delete any existing verification for this email
+            delete_query = "DELETE FROM email_verifications WHERE email = %s"
+            cursor.execute(delete_query, (verification_data.get('email'),))
+            
+            query = """
+                INSERT INTO email_verifications (
+                    id, email, verification_code, pin, first_name, last_name, 
+                    phone, date_of_birth, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                verification_id,
+                verification_data.get('email'),
+                verification_data.get('verification_code'),
+                hashed_pin,
+                verification_data.get('firstName'),
+                verification_data.get('lastName'),
+                verification_data.get('phone'),
+                verification_data.get('dateOfBirth'),
+                expires_at
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Email verification created with ID: {verification_id}")
+            return verification_id
+            
+        except Error as e:
+            print(f"Error creating email verification: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def verify_email_code(self, email: str, code: str) -> dict:
+        """
+        Verify the email verification code
+        
+        Parameters:
+        - email: User's email address
+        - code: 6-digit verification code
+        
+        Returns:
+        - Verification data if valid, None otherwise
+        """
+        try:
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT * FROM email_verifications 
+                WHERE email = %s AND verification_code = %s 
+                AND expires_at > %s AND verified = FALSE AND attempts < 5
+            """
+            cursor.execute(query, (email, code, datetime.now()))
+            result = cursor.fetchone()
+            
+            if result:
+                # Mark as verified
+                update_query = "UPDATE email_verifications SET verified = TRUE WHERE id = %s"
+                cursor.execute(update_query, (result['id'],))
+                conn.commit()
+                return result
+            else:
+                # Increment attempts
+                update_query = """
+                    UPDATE email_verifications SET attempts = attempts + 1 
+                    WHERE email = %s AND verified = FALSE
+                """
+                cursor.execute(update_query, (email,))
+                conn.commit()
+                return None
+            
+        except Error as e:
+            print(f"Error verifying email code: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def get_pending_verification(self, email: str) -> dict:
+        """
+        Get pending verification record for an email
+        
+        Returns:
+        - Verification data if exists and not expired, None otherwise
+        """
+        try:
+            from datetime import datetime
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            query = """
+                SELECT * FROM email_verifications 
+                WHERE email = %s AND expires_at > %s AND verified = FALSE
+            """
+            cursor.execute(query, (email, datetime.now()))
+            result = cursor.fetchone()
+            
+            return result
+            
+        except Error as e:
+            print(f"Error getting pending verification: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def delete_verification(self, email: str):
+        """Delete verification record after successful registration"""
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            query = "DELETE FROM email_verifications WHERE email = %s"
+            cursor.execute(query, (email,))
+            conn.commit()
+            
+        except Error as e:
+            print(f"Error deleting verification: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def create_patient_from_verification(self, verification_data: dict) -> str:
+        """
+        Create patient from verified email data
+        
+        Parameters:
+        - verification_data: The verification record data
+        
+        Returns:
+        - patient_id if successful, None otherwise
+        """
+        try:
+            import uuid
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            patient_id = str(uuid.uuid4())
+            
+            query = """
+                INSERT INTO patients (
+                    id, first_name, last_name, email, phone, date_of_birth, pin
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            values = (
+                patient_id,
+                verification_data.get('first_name'),
+                verification_data.get('last_name'),
+                verification_data.get('email'),
+                verification_data.get('phone'),
+                verification_data.get('date_of_birth'),
+                verification_data.get('pin')  # Already hashed
+            )
+            
+            cursor.execute(query, values)
+            conn.commit()
+            
+            print(f"Patient registered successfully with ID: {patient_id}")
+            return patient_id
+            
+        except Error as e:
+            print(f"Error registering patient from verification: {e}")
+            return None
         finally:
             if cursor:
                 cursor.close()

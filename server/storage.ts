@@ -398,6 +398,38 @@ export class MemStorage implements IStorage {
     this.assignments.set(id, assignment);
     return assignment;
   }
+
+  // Delete a report by ID
+  async deleteReport(id: string): Promise<boolean> {
+    return this.reports.delete(id);
+  }
+
+  // Delete a patient and all related data
+  async deletePatient(patientId: string): Promise<boolean> {
+    // Delete all reports for this patient
+    this.reports.forEach((report, reportId) => {
+      if (report.patientId === patientId) {
+        this.reports.delete(reportId);
+      }
+    });
+
+    // Delete all consents for this patient
+    this.consents.forEach((consent, consentId) => {
+      if (consent.patientId === patientId) {
+        this.consents.delete(consentId);
+      }
+    });
+
+    // Delete all assignments for this patient
+    this.assignments.forEach((assignment, assignmentId) => {
+      if (assignment.patientId === patientId) {
+        this.assignments.delete(assignmentId);
+      }
+    });
+
+    // Finally delete the patient
+    return this.patients.delete(patientId);
+  }
 }
 
 export const storage = new MemStorage();

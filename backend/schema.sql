@@ -171,6 +171,26 @@ CREATE TABLE IF NOT EXISTS assignments (
     UNIQUE KEY unique_doctor_patient (doctor_id, patient_id)
 );
 
+-- Email verification codes table
+CREATE TABLE IF NOT EXISTS email_verifications (
+    id VARCHAR(36) PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    verification_code VARCHAR(6) NOT NULL,
+    pin VARCHAR(255) NOT NULL,  -- Temporarily store hashed PIN during verification
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone VARCHAR(10) NOT NULL,
+    date_of_birth DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    verified BOOLEAN DEFAULT FALSE,
+    attempts INT DEFAULT 0,
+    
+    INDEX idx_email_verification (email),
+    INDEX idx_verification_code (verification_code),
+    INDEX idx_expires_at (expires_at)
+);
+
 -- Patient reports table (for frontend uploaded reports)
 CREATE TABLE IF NOT EXISTS patient_reports (
     id VARCHAR(36) PRIMARY KEY,

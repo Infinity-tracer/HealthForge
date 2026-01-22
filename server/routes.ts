@@ -54,7 +54,17 @@ export async function registerRoutes(
       const result = await flaskResponse.json() as any;
 
       if (flaskResponse.ok) {
-        // Also store in memory for session compatibility
+        // If email verification is required, forward that response to the client
+        if (result.requiresVerification) {
+          return res.status(200).json({
+            success: true,
+            requiresVerification: true,
+            email: result.email,
+            message: result.message || "Verification code sent to your email"
+          });
+        }
+
+        // If no verification required (legacy or verification complete), create in memory
         const patient = await storage.createPatient(validation.data);
         const { pin, ...safePatient } = patient;
         res.status(201).json({ ...safePatient, mysqlId: result.patientId });
@@ -75,6 +85,72 @@ export async function registerRoutes(
       } catch (fallbackError) {
         res.status(500).json({ message: "Internal server error" });
       }
+    }
+  });
+
+
+  // Email Verification - Forward to Flask/MySQL
+  app.post("/api/patients/verify-email", async (req, res) => {
+    try {
+      const { email, code } = req.body;
+
+      if (!email || !code) {
+        return res.status(400).json({ error: "Email and verification code are required" });
+      }
+
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok && result.success) {
+        // After email verification, create patient in memory storage for session compatibility
+        // The patient is already created in MySQL, so we sync it here
+        return res.status(201).json({
+          success: true,
+          message: result.message || "Email verified and registration complete",
+          patientId: result.patientId
+        });
+      } else {
+        res.status(flaskResponse.status).json({ error: result.error || "Verification failed" });
+      }
+    } catch (error) {
+      console.error("Email verification error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Resend Verification Code - Forward to Flask/MySQL
+  app.post("/api/patients/resend-verification", async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok && result.success) {
+        return res.json({
+          success: true,
+          message: result.message || "New verification code sent"
+        });
+      } else {
+        res.status(flaskResponse.status).json({ error: result.error || "Failed to resend code" });
+      }
+    } catch (error) {
+      console.error("Resend verification error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -199,7 +275,7 @@ export async function registerRoutes(
       });
 
       const result = await flaskResponse.json() as any;
-      
+
       if (flaskResponse.ok && result.success && result.patient) {
         // Sync patient to in-memory storage
         const patientData = result.patient;
@@ -216,7 +292,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       res.status(flaskResponse.status).json(result);
     } catch (error) {
       console.error("Fingerprint verification error:", error);
@@ -353,19 +429,19 @@ export async function registerRoutes(
   app.get("/api/patients/:patientId/reports", async (req, res) => {
     try {
       const { patientId } = req.params;
-      
+
       // Try Flask/MySQL first
       try {
         const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}/reports`);
         const result = await flaskResponse.json() as any;
-        
+
         if (flaskResponse.ok && result.success && result.reports.length > 0) {
           return res.json(result.reports);
         }
       } catch (flaskError) {
         console.log("Flask unavailable for reports, using in-memory");
       }
-      
+
       // Fallback to in-memory storage
       const reports = await storage.getReportsByPatientId(patientId);
       res.json(reports);
@@ -487,13 +563,13 @@ export async function registerRoutes(
         aiDiagnosis: aiResponse?.extracted_info?.diagnosis || null,
         aiKeyFindings: aiResponse?.extracted_info?.key_findings || null,
         aiRecommendations: aiResponse?.extracted_info?.recommendations || null,
-        aiTestResults: aiResponse?.extracted_info?.test_results 
-          ? JSON.stringify(aiResponse.extracted_info.test_results) 
+        aiTestResults: aiResponse?.extracted_info?.test_results
+          ? JSON.stringify(aiResponse.extracted_info.test_results)
           : null,
         ragReportId: null, // Can be set if using RAG chat
         processedByAi: !!aiResponse?.success,
       };
-      
+
       const report = await storage.createReport(reportData);
 
       // Persist to MySQL
@@ -512,8 +588,8 @@ export async function registerRoutes(
         success: true,
         report,
         aiProcessed: !!aiResponse?.success,
-        message: aiResponse?.success 
-          ? "Report uploaded and processed with AI" 
+        message: aiResponse?.success
+          ? "Report uploaded and processed with AI"
           : "Report uploaded (AI processing pending)",
       });
     } catch (error) {
@@ -569,19 +645,19 @@ export async function registerRoutes(
   app.get("/api/patients/:patientId/consents", async (req, res) => {
     try {
       const { patientId } = req.params;
-      
+
       // Try Flask/MySQL first
       try {
         const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}/consents`);
         const result = await flaskResponse.json() as any;
-        
+
         if (flaskResponse.ok && result.success && result.consents.length > 0) {
           return res.json(result.consents);
         }
       } catch (flaskError) {
         console.log("Flask unavailable for consents, using in-memory");
       }
-      
+
       const consents = await storage.getConsentsByPatientId(patientId);
       res.json(consents);
     } catch (error) {
@@ -632,16 +708,16 @@ export async function registerRoutes(
       // Also create an assignment if one doesn't exist
       const existingAssignments = await storage.getAssignmentsByDoctorId(doctorId);
       const alreadyAssigned = existingAssignments.some((a) => a.patientId === patientId);
-      
+
       if (!alreadyAssigned) {
         const assignmentData = {
           doctorId,
           patientId,
           assignedAt: new Date().toISOString(),
         };
-        
+
         const assignment = await storage.createAssignment(assignmentData);
-        
+
         // Persist assignment to MySQL
         try {
           await fetch(`${FLASK_BACKEND_URL}/api/assignments`, {
@@ -666,7 +742,7 @@ export async function registerRoutes(
     try {
       const { consentId } = req.params;
       const consent = await storage.revokeConsent(consentId);
-      
+
       if (!consent) {
         return res.status(404).json({ message: "Consent not found" });
       }
@@ -691,12 +767,12 @@ export async function registerRoutes(
   app.get("/api/doctors/:doctorId/patients", async (req, res) => {
     try {
       const { doctorId } = req.params;
-      
+
       // Try Flask/MySQL first for assignments
       try {
         const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/doctors/${doctorId}/assignments`);
         const result = await flaskResponse.json() as any;
-        
+
         if (flaskResponse.ok && result.success && result.assignments.length > 0) {
           // Get reports for each patient from MySQL
           const patientsWithReports = await Promise.all(
@@ -708,8 +784,8 @@ export async function registerRoutes(
                 if (reportsResult.success) {
                   reports = reportsResult.reports;
                 }
-              } catch {}
-              
+              } catch { }
+
               return {
                 id: a.patientId,
                 firstName: a.patientName?.split(' ')[0] || '',
@@ -726,22 +802,22 @@ export async function registerRoutes(
       } catch (flaskError) {
         console.log("Flask unavailable, using in-memory");
       }
-      
+
       // Fallback to in-memory
       const assignments = await storage.getAssignmentsByDoctorId(doctorId);
-      
+
       const patientsWithReports = await Promise.all(
         assignments.map(async (assignment) => {
           // Check if there's an active consent for this doctor-patient pair
           const activeConsent = await storage.getActiveConsentForDoctorPatient(doctorId, assignment.patientId);
           if (!activeConsent) return null; // Skip patients with revoked consent
-          
+
           const patient = await storage.getPatient(assignment.patientId);
           if (!patient) return null;
-          
+
           const reports = await storage.getReportsByPatientId(patient.id);
           const { pin, ...safePatient } = patient;
-          
+
           return {
             ...safePatient,
             reports,
@@ -770,6 +846,56 @@ export async function registerRoutes(
       res.json(report);
     } catch (error) {
       console.error("Update report status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete a patient's report
+  app.delete("/api/patients/:patientId/reports/:reportId", async (req, res) => {
+    try {
+      const { patientId, reportId } = req.params;
+
+      // Forward to Flask backend
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}/reports/${reportId}`, {
+        method: "DELETE",
+      });
+
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok && result.success) {
+        // Also delete from in-memory storage
+        await storage.deleteReport(reportId);
+        return res.json({ success: true, message: "Report deleted successfully" });
+      } else {
+        res.status(flaskResponse.status).json({ message: result.error || "Failed to delete report" });
+      }
+    } catch (error) {
+      console.error("Delete report error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete patient account
+  app.delete("/api/patients/:patientId", async (req, res) => {
+    try {
+      const { patientId } = req.params;
+
+      // Forward to Flask backend
+      const flaskResponse = await fetch(`${FLASK_BACKEND_URL}/api/patients/${patientId}`, {
+        method: "DELETE",
+      });
+
+      const result = await flaskResponse.json() as any;
+
+      if (flaskResponse.ok && result.success) {
+        // Also delete from in-memory storage
+        await storage.deletePatient(patientId);
+        return res.json({ success: true, message: "Account deleted successfully" });
+      } else {
+        res.status(flaskResponse.status).json({ message: result.error || "Failed to delete account" });
+      }
+    } catch (error) {
+      console.error("Delete patient error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

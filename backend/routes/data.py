@@ -67,6 +67,50 @@ def get_patient_reports(patient_id):
         }), 500
 
 
+@data_bp.route('/api/patients/<patient_id>/reports/<report_id>', methods=['DELETE'])
+def delete_patient_report(patient_id, report_id):
+    """Delete a patient's report"""
+    try:
+        db = PatientReportDB()
+        
+        # First verify the report belongs to this patient
+        report = db.get_report_by_id(report_id)
+        if not report:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': 'Report not found'
+            }), 404
+        
+        if report.get('patientId') != patient_id:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': 'Unauthorized to delete this report'
+            }), 403
+        
+        success = db.delete_report(report_id)
+        db.close()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Report deleted successfully'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to delete report'
+            }), 500
+            
+    except Exception as e:
+        print(f"Error deleting report: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
 @data_bp.route('/api/reports/<report_id>', methods=['GET'])
 def get_report(report_id):
     """Get a specific report"""

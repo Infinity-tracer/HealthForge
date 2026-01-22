@@ -1,9 +1,20 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, FileText, Calendar, Activity, Brain, Stethoscope, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Calendar, Activity, Brain, Stethoscope, AlertCircle, Trash2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { MedicalReport } from "@shared/schema";
@@ -11,6 +22,8 @@ import type { MedicalReport } from "@shared/schema";
 interface HistoryCardProps {
   report: MedicalReport;
   className?: string;
+  onDelete?: (reportId: string) => void;
+  isDeleting?: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -26,9 +39,9 @@ const categoryIcons: Record<string, typeof Activity> = {
   default: FileText,
 };
 
-export function HistoryCard({ report, className }: HistoryCardProps) {
+export function HistoryCard({ report, className, onDelete, isDeleting }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   const attributes = JSON.parse(report.attributes || "[]") as Array<{
     name: string;
     value: string;
@@ -74,6 +87,42 @@ export function HistoryCard({ report, className }: HistoryCardProps) {
             >
               {report.status}
             </Badge>
+            {onDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    disabled={isDeleting}
+                    data-testid={`button-delete-report-${report.id}`}
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Report</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this report? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => onDelete(report.id)}
+                      className="bg-destructive hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Button
               variant="ghost"
               size="icon"
