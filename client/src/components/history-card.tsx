@@ -42,11 +42,25 @@ const categoryIcons: Record<string, typeof Activity> = {
 export function HistoryCard({ report, className, onDelete, isDeleting }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const attributes = JSON.parse(report.attributes || "[]") as Array<{
-    name: string;
-    value: string;
-    unit: string;
+  // Parse attributes - handle both old format (name, value, unit) and RAG format (test_name, test_value, unit)
+  const rawAttributes = JSON.parse(report.attributes || "[]") as Array<{
+    name?: string;
+    value?: string;
+    test_name?: string;
+    test_value?: string;
+    unit?: string;
+    normal_range?: string;
+    status?: string;
   }>;
+  
+  // Normalize to consistent format
+  const attributes = rawAttributes.map(attr => ({
+    name: attr.name || attr.test_name || "Unknown",
+    value: attr.value || attr.test_value || "",
+    unit: attr.unit || "",
+    normal_range: attr.normal_range,
+    status: attr.status,
+  }));
 
   const IconComponent = categoryIcons[report.diseaseName] || categoryIcons.default;
 
@@ -169,11 +183,32 @@ export function HistoryCard({ report, className, onDelete, isDeleting }: History
                     key={index}
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                   >
-                    <span className="text-sm font-medium">{attr.name}</span>
-                    <span className="font-mono text-sm">
-                      {attr.value}{" "}
-                      <span className="text-muted-foreground">{attr.unit}</span>
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">{attr.name}</span>
+                      {attr.normal_range && (
+                        <span className="text-xs text-muted-foreground">
+                          Normal: {attr.normal_range}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm">
+                        {attr.value}{" "}
+                        <span className="text-muted-foreground">{attr.unit}</span>
+                      </span>
+                      {attr.status && (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-xs",
+                            attr.status.toLowerCase() === "normal" && "bg-green-500/10 text-green-600 border-green-500/20",
+                            (attr.status.toLowerCase() === "high" || attr.status.toLowerCase() === "low") && "bg-red-500/10 text-red-600 border-red-500/20"
+                          )}
+                        >
+                          {attr.status}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

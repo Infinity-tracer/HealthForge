@@ -14,6 +14,20 @@ import type {
   InsertUser,
 } from "@shared/schema";
 
+// Type for syncing patient from MySQL (fingerprint fields are optional)
+export type SyncPatientData = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  pin: string;
+  fingerprintCredentialId?: string | null;
+  fingerprintPublicKey?: string | null;
+  fingerprintRegistered?: boolean | null;
+};
+
 export interface IStorage {
   // Users (legacy)
   getUser(id: string): Promise<User | undefined>;
@@ -24,7 +38,7 @@ export interface IStorage {
   getPatient(id: string): Promise<Patient | undefined>;
   getPatientByEmail(email: string): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
-  syncPatientFromMySQL(patient: Patient): Promise<Patient>;
+  syncPatientFromMySQL(patient: SyncPatientData): Promise<Patient>;
   getAllPatients(): Promise<Patient[]>;
 
   // Doctors
@@ -246,7 +260,13 @@ export class MemStorage implements IStorage {
   }
 
   // Sync patient from MySQL to in-memory storage (preserves MySQL ID)
-  async syncPatientFromMySQL(patient: Patient): Promise<Patient> {
+  async syncPatientFromMySQL(patientData: SyncPatientData): Promise<Patient> {
+    const patient: Patient = {
+      ...patientData,
+      fingerprintCredentialId: patientData.fingerprintCredentialId ?? null,
+      fingerprintPublicKey: patientData.fingerprintPublicKey ?? null,
+      fingerprintRegistered: patientData.fingerprintRegistered ?? false,
+    };
     this.patients.set(patient.id, patient);
     return patient;
   }

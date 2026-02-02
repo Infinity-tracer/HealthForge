@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, type SyncPatientData } from "./storage";
 import {
   patientRegistrationSchema,
   doctorRegistrationSchema,
@@ -175,7 +175,7 @@ export async function registerRoutes(
           const existingPatient = await storage.getPatient(patientData.id);
           if (!existingPatient) {
             // Create in-memory record with MySQL data
-            await storage.syncPatientFromMySQL({
+            const syncData: SyncPatientData = {
               id: patientData.id,
               firstName: patientData.firstName,
               lastName: patientData.lastName,
@@ -183,7 +183,8 @@ export async function registerRoutes(
               phone: patientData.phone,
               dateOfBirth: patientData.dateOfBirth,
               pin: pin, // Store the PIN for session
-            });
+            };
+            await storage.syncPatientFromMySQL(syncData);
           }
           return res.json(patientData);
         } else if (!flaskResponse.ok) {
@@ -281,7 +282,7 @@ export async function registerRoutes(
         const patientData = result.patient;
         const existingPatient = await storage.getPatient(patientData.id);
         if (!existingPatient) {
-          await storage.syncPatientFromMySQL({
+          const syncData: SyncPatientData = {
             id: patientData.id,
             firstName: patientData.firstName,
             lastName: patientData.lastName,
@@ -289,7 +290,8 @@ export async function registerRoutes(
             phone: patientData.phone,
             dateOfBirth: patientData.dateOfBirth,
             pin: "", // Not needed for fingerprint login
-          });
+          };
+          await storage.syncPatientFromMySQL(syncData);
         }
       }
 
@@ -494,6 +496,64 @@ export async function registerRoutes(
     }
   });
 
+  // Extract information from PDF without saving (for confirmation flow)
+  app.post("/api/reports/extract", upload.single("file"), async (req, res) => {
+    try {
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ success: false, message: "No file uploaded" });
+      }
+
+      console.log(`Extracting information from file: ${file.originalname}`);
+
+      // Create FormData for Flask API
+      const formData = new FormData();
+      formData.append("file", file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+
+      // Call Flask RAG API for extraction only
+      const flaskResponse = await fetch(`${FLASK_API_URL}/api/report/summary`, {
+        method: "POST",
+        body: formData,
+        headers: formData.getHeaders(),
+      });
+
+      if (!flaskResponse.ok) {
+        const errorText = await flaskResponse.text();
+        console.error("Flask API extraction error:", errorText);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to extract information from document",
+        });
+      }
+
+      const data = await flaskResponse.json() as {
+        success: boolean;
+        summary?: string;
+        extracted_info?: any;
+        file_name?: string;
+      };
+
+      console.log("Extraction successful for:", file.originalname);
+
+      res.json({
+        success: true,
+        summary: data.summary || "",
+        extracted_info: data.extracted_info || {},
+        file_name: file.originalname,
+      });
+    } catch (error) {
+      console.error("Extraction error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error during extraction",
+      });
+    }
+  });
+
   // Upload PDF report with AI processing
   app.post("/api/patients/:patientId/reports/upload", upload.single("file"), async (req, res) => {
     try {
@@ -511,63 +571,88 @@ export async function registerRoutes(
 
       console.log(`Processing file upload for patient ${patientId}: ${file.originalname}`);
 
-      // Create FormData for Flask API
-      const formData = new FormData();
-      formData.append("file", file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype,
-      });
-
-      // Call Flask RAG API for processing
-      let aiResponse = null;
-      try {
-        const flaskResponse = await fetch(`${FLASK_API_URL}/api/report/summary`, {
-          method: "POST",
-          body: formData,
-          headers: formData.getHeaders(),
-        });
-
-        if (flaskResponse.ok) {
-          aiResponse = await flaskResponse.json() as {
-            success: boolean;
-            summary?: string;
-            extracted_info?: {
-              diagnosis?: string;
-              key_findings?: string;
-              recommendations?: string;
-              test_results?: any[];
-              report_type?: string;
-            };
-            file_name?: string;
-          };
-          console.log("AI processing successful:", aiResponse.success);
-        } else {
-          console.error("Flask API error:", await flaskResponse.text());
+      // Check if pre-extracted data was provided (from confirmation flow)
+      let extractedInfo: any = null;
+      let summary: string | null = null;
+      
+      if (req.body.extracted_info) {
+        try {
+          extractedInfo = typeof req.body.extracted_info === 'string' 
+            ? JSON.parse(req.body.extracted_info) 
+            : req.body.extracted_info;
+          summary = req.body.summary || null;
+          console.log("Using pre-extracted data from confirmation flow");
+        } catch (parseErr) {
+          console.error("Error parsing pre-extracted data:", parseErr);
         }
-      } catch (flaskError) {
-        console.error("Error calling Flask API:", flaskError);
-        // Continue without AI processing
       }
 
-      // Create report with or without AI data
+      // Only call Flask API if no pre-extracted data
+      let aiResponse = null;
+      if (!extractedInfo) {
+        // Create FormData for Flask API
+        const formData = new FormData();
+        formData.append("file", file.buffer, {
+          filename: file.originalname,
+          contentType: file.mimetype,
+        });
+
+        // Call Flask RAG API for processing
+        try {
+          const flaskResponse = await fetch(`${FLASK_API_URL}/api/report/summary`, {
+            method: "POST",
+            body: formData,
+            headers: formData.getHeaders(),
+          });
+
+          if (flaskResponse.ok) {
+            aiResponse = await flaskResponse.json() as {
+              success: boolean;
+              summary?: string;
+              extracted_info?: {
+                diagnosis?: string;
+                key_findings?: string;
+                recommendations?: string;
+                test_results?: any[];
+                report_type?: string;
+                report_date?: string;
+                patient_name?: string;
+                hospital_name?: string;
+                doctor_name?: string;
+              };
+              file_name?: string;
+            };
+            console.log("AI processing successful:", aiResponse.success);
+            extractedInfo = aiResponse.extracted_info;
+            summary = aiResponse.summary || null;
+          } else {
+            console.error("Flask API error:", await flaskResponse.text());
+          }
+        } catch (flaskError) {
+          console.error("Error calling Flask API:", flaskError);
+          // Continue without AI processing
+        }
+      }
+
+      // Create report with extracted or user-confirmed data
       const reportData = {
         patientId,
-        diseaseName: aiResponse?.extracted_info?.report_type || req.body.diseaseName || "Medical Report",
-        attributes: JSON.stringify(aiResponse?.extracted_info?.test_results || []),
-        measurementDate: new Date().toISOString().split("T")[0],
+        diseaseName: extractedInfo?.report_type || req.body.diseaseName || "Medical Report",
+        attributes: JSON.stringify(extractedInfo?.test_results || []),
+        measurementDate: extractedInfo?.report_date || new Date().toISOString().split("T")[0],
         fileName: file.originalname,
         fileType: file.mimetype,
         status: "pending",
         uploadedAt: new Date().toISOString(),
-        aiSummary: aiResponse?.summary || null,
-        aiDiagnosis: aiResponse?.extracted_info?.diagnosis || null,
-        aiKeyFindings: aiResponse?.extracted_info?.key_findings || null,
-        aiRecommendations: aiResponse?.extracted_info?.recommendations || null,
-        aiTestResults: aiResponse?.extracted_info?.test_results
-          ? JSON.stringify(aiResponse.extracted_info.test_results)
+        aiSummary: summary || null,
+        aiDiagnosis: extractedInfo?.diagnosis || null,
+        aiKeyFindings: extractedInfo?.key_findings || null,
+        aiRecommendations: extractedInfo?.recommendations || null,
+        aiTestResults: extractedInfo?.test_results
+          ? JSON.stringify(extractedInfo.test_results)
           : null,
         ragReportId: null, // Can be set if using RAG chat
-        processedByAi: !!aiResponse?.success,
+        processedByAi: !!(extractedInfo || aiResponse?.success),
       };
 
       const report = await storage.createReport(reportData);
@@ -587,8 +672,10 @@ export async function registerRoutes(
       res.status(201).json({
         success: true,
         report,
-        aiProcessed: !!aiResponse?.success,
-        message: aiResponse?.success
+        aiProcessed: !!(extractedInfo || aiResponse?.success),
+        message: extractedInfo 
+          ? "Report saved with confirmed information"
+          : aiResponse?.success
           ? "Report uploaded and processed with AI"
           : "Report uploaded (AI processing pending)",
       });

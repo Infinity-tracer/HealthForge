@@ -34,7 +34,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ReportUploader } from "@/components/report-uploader";
+import { SmartReportUploader } from "@/components/smart-report-uploader";
 import { HistoryCard } from "@/components/history-card";
 import { TimelineChart } from "@/components/timeline-chart";
 import { ConsentModal } from "@/components/consent-modal";
@@ -451,14 +451,11 @@ export default function PatientDashboard() {
 
               {showUploader && (
                 <div className="animate-fade-in-up">
-                  <ReportUploader
-                    onSubmit={handleUpload}
-                    isLoading={uploadMutation.isPending}
-                    onCancel={() => setShowUploader(false)}
-                    patientId={user?.id}
+                  <SmartReportUploader
+                    patientId={user?.id || ""}
                     onUploadSuccess={handleUploadSuccess}
                     onUploadError={handleUploadError}
-                    enableRAGProcessing={true}
+                    onCancel={() => setShowUploader(false)}
                   />
                 </div>
               )}
